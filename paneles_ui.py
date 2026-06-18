@@ -56,29 +56,20 @@ class MEDVISION_OT_setup_slicer_view(bpy.types.Operator):
 
 # ---- PANEL PRINCIPAL ----
 class MEDVISION_PT_main_panel(bpy.types.Panel):
-    bl_label = "MedVision UI"
+    bl_label = "MedVision Control"
     bl_idname = "MEDVISION_PT_main_panel"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'MedVision_Solid' 
+    bl_space_type = 'VIEW_3D'    # Debe estar en el área 3D
+    bl_region_type = 'UI'        # Región de herramientas
+    bl_category = 'MedVision'    # Nombre de la pestaña en la parte inferior
 
     def draw(self, context):
         layout = self.layout
-        
-        layout.use_property_split = True
-        layout.use_property_decorate = False
-        
         col = layout.column(align=True)
-        
-        try:
-            col.prop(context.scene, "mri_filepath")
-            col.prop(context.scene, "hdbet_filepath") # NUEVO
-        except Exception as e:
-            col.label(text=f"Error: {str(e)}", icon='ERROR')
-        
+        col.prop(context.scene, "mri_filepath")
+        col.prop(context.scene, "hdbet_filepath")
         col.separator()
-        col.operator("medvision.setup_slicer_view", icon='WINDOW', text="Configurar Entorno")
-        col.operator("medvision.extract_solid_brain", icon='MESH_ICOSPHERE', text="Extraer Cerebro")
+        col.operator("medvision.setup_slicer_view", text="Configurar Entorno")
+        col.operator("medvision.extract_solid_brain", text="Extraer Cerebro")
 
 classes = (MEDVISION_OT_setup_slicer_view, MEDVISION_PT_main_panel)
 
