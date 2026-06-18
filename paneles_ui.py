@@ -45,7 +45,6 @@ class MEDVISION_OT_setup_slicer_view(bpy.types.Operator):
                 espacio.show_gizmo = False
                 espacio.show_region_header = True
 
-        # 2. Configurar el HUD (Textos)
         if "hud_medico_handle" in bpy.app.driver_namespace:
             try: bpy.types.SpaceView3D.draw_handler_remove(bpy.app.driver_namespace["hud_medico_handle"], 'WINDOW')
             except: pass
@@ -66,14 +65,20 @@ class MEDVISION_PT_main_panel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         
-        try:
-            layout.prop(context.scene, "dicom_dirpath")
-        except Exception as e:
-            layout.label(text=f"Error: {str(e)}", icon='ERROR')
+        layout.use_property_split = True
+        layout.use_property_decorate = False
         
-        layout.separator()
-        layout.operator("medvision.setup_slicer_view", icon='WINDOW', text="Configurar Entorno")
-        layout.operator("medvision.extract_solid_brain", icon='MESH_ICOSPHERE', text="Extraer Cerebro")
+        col = layout.column(align=True)
+        
+        try:
+            col.prop(context.scene, "mri_filepath")
+            col.prop(context.scene, "hdbet_filepath") # NUEVO
+        except Exception as e:
+            col.label(text=f"Error: {str(e)}", icon='ERROR')
+        
+        col.separator()
+        col.operator("medvision.setup_slicer_view", icon='WINDOW', text="Configurar Entorno")
+        col.operator("medvision.extract_solid_brain", icon='MESH_ICOSPHERE', text="Extraer Cerebro")
 
 classes = (MEDVISION_OT_setup_slicer_view, MEDVISION_PT_main_panel)
 

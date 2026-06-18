@@ -1,87 +1,65 @@
 import bpy
 import os
+import subprocess
+import tempfile
 import SimpleITK as sitk
 import numpy as np
 from skimage import measure
-from scipy.ndimage import binary_fill_holes
 
 class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
     bl_idname = "medvision.extract_solid_brain"
-    bl_label = "Extraer Cerebro"
-    bl_description = "Aísla el cerebro usando máscara craneal + morfología"
+    bl_label = "Extraer Cerebro (HD-BET)"
+    bl_description = "Ejecuta HD-BET en segundo plano y genera la malla 3D"
 
     def execute(self, context):
-        ruta_carpeta = bpy.path.abspath(context.scene.dicom_dirpath)
+        ruta_archivo = bpy.path.abspath(context.scene.mri_filepath)
+        ruta_hdbet = bpy.path.abspath(context.scene.hdbet_filepath)
 
-        if not os.path.isdir(ruta_carpeta):
-            self.report({'ERROR'}, "Selecciona una carpeta válida primero.")
+        if not os.path.isfile(ruta_archivo) or not ruta_archivo.endswith('.nii.gz'):
+            self.report({'ERROR'}, "Selecciona un archivo MRI válido (.nii.gz).")
+            return {'CANCELLED'}
+
+        if not os.path.isfile(ruta_hdbet):
+            self.report({'ERROR'}, "Selecciona el ejecutable de HD-BET de tu entorno virtual.")
             return {'CANCELLED'}
 
         try:
-            reader = sitk.ImageSeriesReader()
-            dicom_names = reader.GetGDCMSeriesFileNames(ruta_carpeta)
-            reader.SetFileNames(dicom_names)
-            imagen_3d = reader.Execute()
+            temp_dir = tempfile.gettempdir()
+            salida_hdbet = os.path.join(temp_dir, "cerebro_limpio_hdbet.nii.gz")
+
+            # PASO 1: Llamada a la Inteligencia Artificial
+            print("Paso 1: Ejecutando HD-BET en segundo plano...")
+            self.report({'INFO'}, "Procesando IA... Revisa la consola.")
+            
+            comando = [ruta_hdbet, "-i", ruta_archivo, "-o", salida_hdbet]
+            subprocess.run(comando, check=True)
+
+            # PASO 2: Leer el resultado generado por la IA
+            print("Paso 2: Leyendo volumen limpio...")
+            imagen_3d = sitk.ReadImage(salida_hdbet)
             espaciado = imagen_3d.GetSpacing()
-
-            # PASO 1: Detectar el cráneo
-            print("Paso 1: Detectando cráneo...")
-            mascara_hueso = sitk.BinaryThreshold(
-                imagen_3d, lowerThreshold=200, upperThreshold=3000,
-                insideValue=1, outsideValue=0
-            )
-
-            # PASO 2: Sellar las cuencas oculares y fugas del cráneo
-            print("Paso 2: Sellando fugas del cráneo...")
-            cierre = sitk.BinaryMorphologicalClosingImageFilter()
-            cierre.SetKernelRadius([4, 4, 4]) 
-            cierre.SetForegroundValue(1)
-            hueso_sellado = cierre.Execute(mascara_hueso)
-
-            # PASO 3: Rellenar interior slice a slice
-            print("Paso 3: Rellenando interior corte a corte...")
-            volumen_hueso = sitk.GetArrayFromImage(hueso_sellado)
-            volumen_relleno = np.zeros_like(volumen_hueso)
-            for i in range(volumen_hueso.shape[0]):
-                volumen_relleno[i] = binary_fill_holes(volumen_hueso[i]).astype(np.uint8)
-
-            # PASO 4: Restar el cráneo para quedarnos SOLO con la cavidad interior
-            interior_np = (volumen_relleno - volumen_hueso).clip(0, 1).astype(np.uint8)
-            interior_craneo = sitk.GetImageFromArray(interior_np)
-            interior_craneo.CopyInformation(imagen_3d)
-
-            # PASO 5: Filtrado Hounsfield estricto para el cerebro
-            print("Paso 4: Aplicando filtro HU para tejido cerebral...")
-            tejido_blando = sitk.BinaryThreshold(
-                imagen_3d, lowerThreshold=20, upperThreshold=80,
-                insideValue=1, outsideValue=0
-            )
-
-            # Cruzamos el tejido blando con la cavidad interior sellada
-            cerebro_final = sitk.And(tejido_blando, interior_craneo)
-            volumen_np = sitk.GetArrayFromImage(cerebro_final)
+            volumen_np = sitk.GetArrayFromImage(imagen_3d)
             
             if not np.any(volumen_np):
-                self.report({'WARNING'}, "El filtrado borró todo.")
+                self.report({'WARNING'}, "La extracción devolvió un volumen vacío.")
                 return {'CANCELLED'}
 
-            # Marching cubes → malla 3D
-            print("Calculando geometría 3D...")
+            # PASO 3: Marching cubes → malla 3D
+            print("Paso 3: Calculando geometría 3D...")
             verts, faces, normals, values = measure.marching_cubes(
                 volumen_np, level=0.5,
                 spacing=(espaciado[2], espaciado[1], espaciado[0])
             )
 
-            # Inyectar en Blender
-            print("Generando malla en Blender...")
-            mesh = bpy.data.meshes.new("DICOM_Cerebro_Mesh")
-            obj = bpy.data.objects.new("DICOM_Cerebro", mesh)
+            # PASO 4: Inyectar en Blender
+            print("Paso 4: Generando malla en Blender...")
+            mesh = bpy.data.meshes.new("MRI_Cerebro_Mesh")
+            obj = bpy.data.objects.new("MRI_Cerebro", mesh)
             mesh.from_pydata(verts.tolist(), [], faces.tolist())
             mesh.update()
             context.collection.objects.link(obj)
 
             # Suavizado con modifier
-            print("Aplicando suavizado...")
             smooth = obj.modifiers.new(name="Smooth", type='SMOOTH')
             smooth.factor = 0.5
             smooth.iterations = 10
@@ -89,10 +67,13 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
             self.report({'INFO'}, "¡Cerebro extraído correctamente!")
             return {'FINISHED'}
 
+        except subprocess.CalledProcessError as e:
+            self.report({'ERROR'}, "Fallo al ejecutar HD-BET. Revisa la consola para más detalles.")
+            return {'CANCELLED'}
         except Exception as e:
             import traceback
             traceback.print_exc()
-            self.report({'ERROR'}, f"Error: {str(e)}")
+            self.report({'ERROR'}, f"Error crítico: {str(e)}")
             return {'CANCELLED'}
 
 def register():

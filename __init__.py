@@ -1,10 +1,10 @@
 bl_info = {
-    "name": "MedVision DICOM",
+    "name": "MedVision",
     "author": "Miriam Rodriguez",
-    "version": (1, 0),
+    "version": (1, 1),
     "blender": (3, 6, 0),
     "location": "Workspace MedVision",
-    "description": "Procesamiento medico y extraccion de modelos desde DICOM",
+    "description": "Extracción de cerebro desde MRI (.nii.gz) usando IA (HD-BET)",
     "category": "3D View",
 }
 
@@ -37,13 +37,23 @@ def handler_inicio(dummy):
 def register():
     procesar_dicom.register()
     paneles_ui.register()
-    bpy.types.Scene.dicom_dirpath = bpy.props.StringProperty(
-        name="Carpeta DICOM",
-        subtype='DIR_PATH'
+    
+    # Archivo MRI
+    bpy.types.Scene.mri_filepath = bpy.props.StringProperty(
+        name="Archivo MRI",
+        description="Ruta al archivo .nii.gz",
+        subtype='FILE_PATH'
     )
+    
+    # NUEVO: Ruta al ejecutable de HD-BET en el entorno virtual
+    bpy.types.Scene.hdbet_filepath = bpy.props.StringProperty(
+        name="Ruta HD-BET (.exe)",
+        description="Ruta al ejecutable de HD-BET en tu entorno virtual",
+        subtype='FILE_PATH'
+    )
+    
     # Ejecutar al cargar cualquier archivo .blend
     bpy.app.handlers.load_post.append(handler_inicio)
-    # Ejecutar también ahora mismo al activar el addon
     if bpy.context.scene:
         limpiar_escena_inicial()
         crear_workspace_medvision()
@@ -51,7 +61,8 @@ def register():
 def unregister():
     if handler_inicio in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(handler_inicio)
-    del bpy.types.Scene.dicom_dirpath
+    del bpy.types.Scene.mri_filepath
+    del bpy.types.Scene.hdbet_filepath # NUEVO
     paneles_ui.unregister()
     procesar_dicom.unregister()
 
