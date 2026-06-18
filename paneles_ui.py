@@ -68,7 +68,6 @@ class MEDVISION_PT_main_panel(bpy.types.Panel):
         col.prop(context.scene, "mri_filepath")
         col.prop(context.scene, "hdbet_filepath")
         col.separator()
-        col.operator("medvision.setup_slicer_view", text="Configurar Entorno")
         col.operator("medvision.extract_solid_brain", text="Extraer Cerebro")
 
 classes = (MEDVISION_OT_setup_slicer_view, MEDVISION_PT_main_panel)

@@ -65,6 +65,17 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
             mesh.update()
             context.collection.objects.link(obj)
 
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+
+            for area in context.screen.areas:
+                if area.type == 'VIEW_3D':
+                    for region in area.regions:
+                        if region.type == 'WINDOW':
+                            with context.temp_override(area=area, region=region):
+                                bpy.ops.view3d.view_selected(use_all_regions=True)
+
             # REFINAMIENTO B: Corregir la inversión del sistema de coordenadas médico (NIfTI vs Blender)
             # Rotamos el objeto 180 grados sobre el eje X. Al estar centrado, el pivote es perfecto.
             obj.rotation_euler = (math.radians(180), 0, 0)
