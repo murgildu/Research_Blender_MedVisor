@@ -10,7 +10,7 @@ Dado que el procesamiento pesado recae sobre modelos de Inteligencia Artificial,
 Debido a la complejidad de las librerías de IA, se recomienda encarecidamente realizar la instalación dentro de un **entorno virtual de Python** dedicado para garantizar la estabilidad y evitar conflictos de dependencias con Blender:
 
 1. Instala la herramienta ejecutando: `pip install hd-bet` o desde el repositorio oficial.
-3. Anota la ruta completa donde se encuentra el ejecutable `hd-bet` (ej. `/path/to/venv/Scripts/hd-bet.exe`).
+3. Anota la ruta completa donde se encuentra el ejecutable `hd-bet` (ej. `/path/Scripts/hd-bet.exe`).
 
 > **Nota:** HD-BET requiere un entorno Python funcional. Si dispones de una GPU compatible, el procesamiento tomará menos de 5 segundos. En caso de usar CPU, el proceso puede tardar unos minutos. Para más detalles sobre la IA, consulta el [repositorio oficial de HD-BET](https://github.com/MIC-DKFZ/hd-bet).
 
