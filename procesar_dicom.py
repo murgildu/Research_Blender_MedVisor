@@ -38,12 +38,14 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
             # PASO 2: Leer el resultado generado por la IA
             print("Paso 2: Leyendo volumen limpio...")
             imagen_3d = sitk.ReadImage(salida_hdbet)
+            
+            # ORIENTACIÓN DEFINITIVA: RPS ancla el cerebro al sistema de Blender al 100%
+            filtro_orientacion = sitk.DICOMOrientImageFilter()
+            filtro_orientacion.SetDesiredCoordinateOrientation("RPS")
+            imagen_3d = filtro_orientacion.Execute(imagen_3d)
+            
             espaciado = imagen_3d.GetSpacing()
             volumen_np = sitk.GetArrayFromImage(imagen_3d)
-            
-            if not np.any(volumen_np):
-                self.report({'WARNING'}, "La extraccion devolvio un volumen vacio.")
-                return {'CANCELLED'}
 
             # PASO 3: Marching cubes → generación de la malla inicial
             print("Paso 3: Calculando geometría 3D...")
@@ -52,8 +54,10 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
                 spacing=(espaciado[2], espaciado[1], espaciado[0])
             )
 
+            # NUEVO: Reordenar los ejes de NumPy (Z,Y,X) a Blender (X,Y,Z)
+            verts = verts[:, [2, 1, 0]]
+
             # REFINAMIENTO A: Centrar la geometría en el origen (0,0,0) mediante NumPy
-            # Calculamos el punto medio de la caja del volumen y se lo restamos a los vértices
             centro_bounding_box = (np.max(verts, axis=0) + np.min(verts, axis=0)) / 2.0
             verts = verts - centro_bounding_box
 
@@ -75,10 +79,6 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
                         if region.type == 'WINDOW':
                             with context.temp_override(area=area, region=region):
                                 bpy.ops.view3d.view_selected(use_all_regions=True)
-
-            # REFINAMIENTO B: Corregir la inversión del sistema de coordenadas médico (NIfTI vs Blender)
-            # Rotamos el objeto 180 grados sobre el eje X. Al estar centrado, el pivote es perfecto.
-            obj.rotation_euler = (math.radians(180), 0, 0)
 
             # Post-procesado: Suavizado superficial adaptativo mediante modificador nativo
             smooth = obj.modifiers.new(name="Smooth", type='SMOOTH')
