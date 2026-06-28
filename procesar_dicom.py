@@ -6,6 +6,7 @@ import math
 import SimpleITK as sitk
 import numpy as np
 from skimage import measure
+from . import visor_slicer
 
 class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
     bl_idname = "medvision.extract_solid_brain"
@@ -46,6 +47,12 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
             
             espaciado = imagen_3d.GetSpacing()
             volumen_np = sitk.GetArrayFromImage(imagen_3d)
+
+            # Le pasamos la matriz con todo el interior al visor 2D
+            visor_slicer.guardar_volumen(volumen_np)
+            
+            # Guardamos las dimensiones para que el deslizador sepa cuál es su límite
+            context.scene["medvisor_volumen_shape"] = list(volumen_np.shape)
 
             # PASO 3: Marching cubes → generación de la malla inicial
             print("Paso 3: Calculando geometría 3D...")

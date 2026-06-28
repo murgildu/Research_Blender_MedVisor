@@ -11,6 +11,7 @@ bl_info = {
 import bpy
 from . import procesar_dicom
 from . import paneles_ui
+from . import visor_slicer
 
 
 def limpiar_escena_inicial():
@@ -89,6 +90,18 @@ def register():
     bpy.types.Scene.hdbet_filepath = bpy.props.StringProperty(
         name="Ruta HD-BET", subtype='FILE_PATH')
 
+    bpy.types.Scene.corte_plano = bpy.props.EnumProperty(
+        name="Plano de Corte",
+        items=[('AXIAL', "Axial", ""), ('SAGITAL', "Sagital", ""), ('CORONAL', "Coronal", "")],
+        default='AXIAL',
+        update=visor_slicer.actualizar_corte
+    )
+    bpy.types.Scene.corte_profundidad = bpy.props.IntProperty(
+        name="Profundidad",
+        default=0, min=0, max=256,
+        update=visor_slicer.actualizar_corte
+    )
+
     bpy.app.timers.register(_crear_workspace_medvision, first_interval=1.0)
 
 
@@ -109,6 +122,12 @@ def unregister():
     del bpy.types.Scene.mri_filepath
     del bpy.types.Scene.hdbet_filepath
 
+    if hasattr(bpy.types.Scene, "corte_plano"):
+        del bpy.types.Scene.corte_plano
+    if hasattr(bpy.types.Scene, "corte_profundidad"):
+        del bpy.types.Scene.corte_profundidad
+    
+    visor_slicer.unregister()
     paneles_ui.unregister()
     procesar_dicom.unregister()
 

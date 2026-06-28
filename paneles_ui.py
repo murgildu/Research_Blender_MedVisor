@@ -70,6 +70,12 @@ class MEDVISION_PT_main_panel(bpy.types.Panel):
         col.separator()
         col.operator("medvision.extract_solid_brain", text="Extraer Cerebro")
 
+        layout.separator()
+        box = layout.box()
+        box.label(text="Visor Slicer 2D", icon='IMAGE_BACKGROUND')
+        box.prop(context.scene, "corte_plano", text="Plano")
+        box.prop(context.scene, "corte_profundidad", text="Corte")
+
 classes = (MEDVISION_OT_setup_slicer_view, MEDVISION_PT_main_panel)
 
 def register():
