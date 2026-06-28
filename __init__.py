@@ -22,40 +22,30 @@ def limpiar_escena_inicial():
 
 
 def _configurar_entorno():
-    """
-    Timer: una vez que el workspace MedVision existe, llama al operador
-    que ya configura quad view + HUD médico.
-    """
     ws = bpy.data.workspaces.get("MedVision")
-    if ws is None:
-        return None
+    if ws is None: return None
 
-    # Buscamos una ventana que esté mostrando MedVision para el override
     window = None
     for win in bpy.context.window_manager.windows:
         if win.workspace == ws:
             window = win
             break
 
-    # Si ninguna ventana muestra MedVision aún, reintentamos en 0.3s
-    if window is None:
-        return 0.3
+    if window is None: return 0.3
 
-    # Buscamos un área VIEW_3D en ese workspace
     screen = window.screen
     area = next((a for a in screen.areas if a.type == 'VIEW_3D'), None)
-    if area is None:
-        return 0.3
+    if area is None: return 0.3
 
     region = next((r for r in area.regions if r.type == 'WINDOW'), None)
-    if region is None:
-        return 0.3
+    if region is None: return 0.3
 
-    with bpy.context.temp_override(window=window, screen=screen,
-                                   area=area, region=region):
+    with bpy.context.temp_override(window=window, screen=screen, area=area, region=region):
         bpy.ops.medvision.setup_slicer_view()
+        #Encender los paneles grises instantáneamente
+        visor_slicer.activar_visor()
 
-    return None  # No repetir
+    return None
 
 
 def _crear_workspace_medvision():
