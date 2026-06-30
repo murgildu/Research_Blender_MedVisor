@@ -80,6 +80,7 @@ def register():
     bpy.types.Scene.hdbet_filepath = bpy.props.StringProperty(
         name="Ruta HD-BET", subtype='FILE_PATH')
 
+    # --- DESLIZADORES DE CORTE ---
     bpy.types.Scene.corte_axial = bpy.props.IntProperty(
         name="Corte Axial", default=0, min=0, max=512,
         update=visor_slicer.actualizar_corte_axial
@@ -92,6 +93,30 @@ def register():
         name="Corte Sagital", default=0, min=0, max=512,
         update=visor_slicer.actualizar_corte_sagital
     )
+
+    # --- DESLIZADORES DE ZOOM ---
+    bpy.types.Scene.zoom_axial = bpy.props.FloatProperty(
+        name="Zoom Axial", default=1.0, min=0.1, max=10.0,
+        update=visor_slicer.forzar_redibujado
+    )
+    bpy.types.Scene.zoom_coronal = bpy.props.FloatProperty(
+        name="Zoom Coronal", default=1.0, min=0.1, max=10.0,
+        update=visor_slicer.forzar_redibujado
+    )
+    bpy.types.Scene.zoom_sagital = bpy.props.FloatProperty(
+        name="Zoom Sagital", default=1.0, min=0.1, max=10.0,
+        update=visor_slicer.forzar_redibujado
+    )
+
+    # --- VARIABLES DE DESPLAZAMIENTO (PAN) ---
+    bpy.types.Scene.offset_x_axial = bpy.props.FloatProperty(default=0.0, update=visor_slicer.forzar_redibujado)
+    bpy.types.Scene.offset_y_axial = bpy.props.FloatProperty(default=0.0, update=visor_slicer.forzar_redibujado)
+    
+    bpy.types.Scene.offset_x_coronal = bpy.props.FloatProperty(default=0.0, update=visor_slicer.forzar_redibujado)
+    bpy.types.Scene.offset_y_coronal = bpy.props.FloatProperty(default=0.0, update=visor_slicer.forzar_redibujado)
+    
+    bpy.types.Scene.offset_x_sagital = bpy.props.FloatProperty(default=0.0, update=visor_slicer.forzar_redibujado)
+    bpy.types.Scene.offset_y_sagital = bpy.props.FloatProperty(default=0.0, update=visor_slicer.forzar_redibujado)
 
     bpy.app.timers.register(_crear_workspace_medvision, first_interval=1.0)
 
@@ -119,11 +144,38 @@ def unregister():
         del bpy.types.Scene.corte_coronal
     if hasattr(bpy.types.Scene, "corte_sagital"):
         del bpy.types.Scene.corte_sagital
+
+    # Eliminar también las propiedades de zoom al desactivar el addon
+    if hasattr(bpy.types.Scene, "zoom_axial"):
+        del bpy.types.Scene.zoom_axial
+    if hasattr(bpy.types.Scene, "zoom_coronal"):
+        del bpy.types.Scene.zoom_coronal
+    if hasattr(bpy.types.Scene, "zoom_sagital"):
+        del bpy.types.Scene.zoom_sagital
     
+    if hasattr(bpy.types.Scene, "zoom_sagital"):
+        del bpy.types.Scene.zoom_sagital
+
+    # --- LIMPIEZA DE LAS VARIABLES DE PAN (DESPLAZAMIENTO) ---
+    if hasattr(bpy.types.Scene, "offset_x_axial"):
+        del bpy.types.Scene.offset_x_axial
+    if hasattr(bpy.types.Scene, "offset_y_axial"):
+        del bpy.types.Scene.offset_y_axial
+        
+    if hasattr(bpy.types.Scene, "offset_x_coronal"):
+        del bpy.types.Scene.offset_x_coronal
+    if hasattr(bpy.types.Scene, "offset_y_coronal"):
+        del bpy.types.Scene.offset_y_coronal
+        
+    if hasattr(bpy.types.Scene, "offset_x_sagital"):
+        del bpy.types.Scene.offset_x_sagital
+    if hasattr(bpy.types.Scene, "offset_y_sagital"):
+        del bpy.types.Scene.offset_y_sagital
+        
     visor_slicer.unregister()
     paneles_ui.unregister()
     procesar_dicom.unregister()
-
+    
 
 if __name__ == "__main__":
     register()

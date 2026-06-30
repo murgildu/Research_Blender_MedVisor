@@ -54,7 +54,118 @@ class MEDVISION_OT_setup_slicer_view(bpy.types.Operator):
         
         return {'FINISHED'}
 
-# ---- PANEL PRINCIPAL ----
+class MEDVISION_OT_modal_zoom(bpy.types.Operator):
+    bl_idname = "medvision.modal_zoom"
+    bl_label = "Navegación 2D"
+    bl_description = "Rueda para Zoom, Clic central para desplazar"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def modal(self, context, event):
+        if event.type == 'ESC':
+            self.report({'INFO'}, "Navegación 2D desactivada")
+            return {'CANCELLED'}
+
+        x, y = event.mouse_x, event.mouse_y
+        
+        # Detectar en qué ventana estamos
+        active_region = None
+        for region in context.area.regions:
+            if region.type == 'WINDOW':
+                if region.x <= x <= region.x + region.width and region.y <= y <= region.y + region.height:
+                    active_region = region
+                    break
+        
+        rv3d = active_region.data if active_region else None
+        is_2d_view = False
+        vista = None
+        
+        if rv3d and rv3d.view_perspective == 'ORTHO':
+            is_2d_view = True
+            from .visor_slicer import _detectar_vista
+            vista = _detectar_vista(rv3d)
+
+        # 1. GESTIONAR EL DESPLAZAMIENTO (PAN)
+        if event.type == 'MIDDLEMOUSE':
+            if event.value == 'PRESS' and is_2d_view:
+                self.is_panning = True
+                self.active_view = vista
+                self.last_mouse_x = x
+                self.last_mouse_y = y
+                return {'RUNNING_MODAL'}
+            elif event.value == 'RELEASE':
+                if self.is_panning:
+                    self.is_panning = False
+                    self.active_view = None
+                    return {'RUNNING_MODAL'}
+
+        if event.type == 'MOUSEMOVE' and getattr(self, 'is_panning', False) and self.active_view:
+            dx = x - self.last_mouse_x
+            dy = y - self.last_mouse_y
+            
+            if self.active_view == 'AXIAL':
+                context.scene.offset_x_axial += dx
+                context.scene.offset_y_axial += dy
+            elif self.active_view == 'CORONAL':
+                context.scene.offset_x_coronal += dx
+                context.scene.offset_y_coronal += dy
+            elif self.active_view == 'SAGITAL':
+                context.scene.offset_x_sagital += dx
+                context.scene.offset_y_sagital += dy
+                
+            self.last_mouse_x = x
+            self.last_mouse_y = y
+            return {'RUNNING_MODAL'}
+
+        # 2. GESTIONAR EL ZOOM
+        if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+            if is_2d_view and vista:
+                step = 0.25
+                modificador = step if event.type == 'WHEELUPMOUSE' else -step
+                
+                if vista == 'AXIAL':
+                    context.scene.zoom_axial = max(0.1, min(10.0, context.scene.zoom_axial + modificador))
+                elif vista == 'CORONAL':
+                    context.scene.zoom_coronal = max(0.1, min(10.0, context.scene.zoom_coronal + modificador))
+                elif vista == 'SAGITAL':
+                    context.scene.zoom_sagital = max(0.1, min(10.0, context.scene.zoom_sagital + modificador))
+                return {'RUNNING_MODAL'}
+
+        return {'PASS_THROUGH'}
+
+    def invoke(self, context, event):
+        if context.area.type == 'VIEW_3D':
+            self.is_panning = False
+            self.active_view = None
+            self.last_mouse_x = event.mouse_x
+            self.last_mouse_y = event.mouse_y
+            context.window_manager.modal_handler_add(self)
+            self.report({'INFO'}, "Navegación Interactiva ACTIVADA (ESC para detener)")
+            return {'RUNNING_MODAL'}
+        return {'CANCELLED'}
+
+class MEDVISION_OT_reset_view(bpy.types.Operator):
+    bl_idname = "medvision.reset_view"
+    bl_label = "Centrar Vistas"
+    bl_description = "Restaura el zoom y la posición al centro"
+    bl_options = {'REGISTER', 'UNDO'} # Añade esto para que sea seguro y permita deshacer
+
+    def execute(self, context):
+        context.scene.zoom_axial = 1.0
+        context.scene.zoom_coronal = 1.0
+        context.scene.zoom_sagital = 1.0
+        context.scene.offset_x_axial = 0.0
+        context.scene.offset_y_axial = 0.0
+        context.scene.offset_x_coronal = 0.0
+        context.scene.offset_y_coronal = 0.0
+        context.scene.offset_x_sagital = 0.0
+        context.scene.offset_y_sagital = 0.0
+        
+        # Forzar refresco de pantalla para que la imagen vuelva al centro inmediatamente
+        if context.area:
+            context.area.tag_redraw()
+            
+        return {'FINISHED'}
+    
 class MEDVISION_PT_main_panel(bpy.types.Panel):
     bl_label = "MedVision Control"
     bl_idname = "MEDVISION_PT_main_panel"
@@ -71,13 +182,23 @@ class MEDVISION_PT_main_panel(bpy.types.Panel):
         col.operator("medvision.extract_solid_brain", text="Extraer Cerebro")
 
         layout.separator()
+        
         box = layout.box()
         box.label(text="Visor Slicer 2D", icon='IMAGE_BACKGROUND')
+
+        # Dejamos solo los cortes, mucho más limpio
         box.prop(context.scene, "corte_axial", text="Axial (Top)")
         box.prop(context.scene, "corte_coronal", text="Coronal (Front)")
         box.prop(context.scene, "corte_sagital", text="Sagital (Right)")
 
-classes = (MEDVISION_OT_setup_slicer_view, MEDVISION_PT_main_panel)
+        layout.separator()
+        
+        # Fila compacta con el botón de navegación y el de recentrar vistas
+        row = layout.row(align=True)
+        row.operator("medvision.modal_zoom", text="Activar Navegación", icon='MOUSE_MMB_SCROLL')
+        row.operator("medvision.reset_view", text="", icon='FILE_REFRESH')
+
+classes = (MEDVISION_OT_reset_view, MEDVISION_OT_setup_slicer_view, MEDVISION_OT_modal_zoom, MEDVISION_PT_main_panel)
 
 def register():
     for cls in classes:

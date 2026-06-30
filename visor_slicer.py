@@ -117,6 +117,13 @@ def _actualizar_corte_generico(context, plano, profundidad):
             if area.type == 'VIEW_3D':
                 area.tag_redraw()
 
+def forzar_redibujado(self, context):
+    """Refresca la pantalla inmediatamente al mover el slider de zoom"""
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+
 def actualizar_corte_axial(self, context):
     _actualizar_corte_generico(context, 'AXIAL', self.corte_axial)
 
@@ -198,8 +205,32 @@ def _dibujar_slice():
     else:
         pw, ph = rw, int(rw / ratio)
 
-    x0, y0 = (rw - pw) // 2, (rh - ph) // 2
-    x1, y1 = x0 + pw, y0 + ph
+    # --- INYECTA ESTE BLOQUE AQUÍ ---
+    zoom_factor = 1.0
+    offset_x = 0.0
+    offset_y = 0.0
+    
+    if view_type == 'AXIAL':
+        zoom_factor = ctx.scene.zoom_axial
+        offset_x = ctx.scene.offset_x_axial
+        offset_y = ctx.scene.offset_y_axial
+    elif view_type == 'CORONAL':
+        zoom_factor = ctx.scene.zoom_coronal
+        offset_x = ctx.scene.offset_x_coronal
+        offset_y = ctx.scene.offset_y_coronal
+    elif view_type == 'SAGITAL':
+        zoom_factor = ctx.scene.zoom_sagital
+        offset_x = ctx.scene.offset_x_sagital
+        offset_y = ctx.scene.offset_y_sagital
+
+    pw = int(pw * zoom_factor)
+    ph = int(ph * zoom_factor)
+
+    # Sumamos el offset matemático para mover la imagen
+    x0 = (rw - pw) // 2 + int(offset_x)
+    y0 = (rh - ph) // 2 + int(offset_y)
+    x1 = x0 + pw
+    y1 = y0 + ph
 
     try:
         shader_img = gpu.shader.from_builtin('IMAGE')

@@ -111,7 +111,15 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
             return {'CANCELLED'}
 
 def register():
-    bpy.utils.register_class(MEDVISION_OT_extract_solid_brain)
+    try:
+        bpy.utils.register_class(MEDVISION_OT_extract_solid_brain)
+    except ValueError:
+        # Si ya estaba registrada, la desregistramos y la volvemos a registrar
+        bpy.utils.unregister_class(MEDVISION_OT_extract_solid_brain)
+        bpy.utils.register_class(MEDVISION_OT_extract_solid_brain)
 
 def unregister():
-    bpy.utils.unregister_class(MEDVISION_OT_extract_solid_brain)
+    try:
+        bpy.utils.unregister_class(MEDVISION_OT_extract_solid_brain)
+    except RuntimeError:
+        pass
