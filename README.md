@@ -34,7 +34,7 @@ Una vez activado, el addon configurará el entorno automáticamente:
 4. **Ruta HD-BET:** Indica la ruta completa al ejecutable de `hd-bet` que instalaste en tu sistema.
 5. **Extraer Cerebro:** Haz clic en este botón. Blender ejecutará el proceso en segundo plano, segmentará el parénquima cerebral y renderizará la malla tridimensional centrada y orientada automáticamente en el centro de la escena.
 
-![Demostración de MedVision en tiempo real](documentacion/video_funcionamiento.gif)
+![Demostración de MedVision en tiempo real](documentacion/video_funcionamiento01.gif)
 
 ## Arquitectura y Funcionamiento Interno
 
