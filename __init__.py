@@ -80,16 +80,17 @@ def register():
     bpy.types.Scene.hdbet_filepath = bpy.props.StringProperty(
         name="Ruta HD-BET", subtype='FILE_PATH')
 
-    bpy.types.Scene.corte_plano = bpy.props.EnumProperty(
-        name="Plano de Corte",
-        items=[('AXIAL', "Axial", ""), ('SAGITAL', "Sagital", ""), ('CORONAL', "Coronal", "")],
-        default='AXIAL',
-        update=visor_slicer.actualizar_corte
+    bpy.types.Scene.corte_axial = bpy.props.IntProperty(
+        name="Corte Axial", default=0, min=0, max=512,
+        update=visor_slicer.actualizar_corte_axial
     )
-    bpy.types.Scene.corte_profundidad = bpy.props.IntProperty(
-        name="Profundidad",
-        default=0, min=0, max=256,
-        update=visor_slicer.actualizar_corte
+    bpy.types.Scene.corte_coronal = bpy.props.IntProperty(
+        name="Corte Coronal", default=0, min=0, max=512,
+        update=visor_slicer.actualizar_corte_coronal
+    )
+    bpy.types.Scene.corte_sagital = bpy.props.IntProperty(
+        name="Corte Sagital", default=0, min=0, max=512,
+        update=visor_slicer.actualizar_corte_sagital
     )
 
     bpy.app.timers.register(_crear_workspace_medvision, first_interval=1.0)
@@ -112,10 +113,12 @@ def unregister():
     del bpy.types.Scene.mri_filepath
     del bpy.types.Scene.hdbet_filepath
 
-    if hasattr(bpy.types.Scene, "corte_plano"):
-        del bpy.types.Scene.corte_plano
-    if hasattr(bpy.types.Scene, "corte_profundidad"):
-        del bpy.types.Scene.corte_profundidad
+    if hasattr(bpy.types.Scene, "corte_axial"):
+        del bpy.types.Scene.corte_axial
+    if hasattr(bpy.types.Scene, "corte_coronal"):
+        del bpy.types.Scene.corte_coronal
+    if hasattr(bpy.types.Scene, "corte_sagital"):
+        del bpy.types.Scene.corte_sagital
     
     visor_slicer.unregister()
     paneles_ui.unregister()

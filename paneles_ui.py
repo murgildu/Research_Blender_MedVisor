@@ -73,8 +73,9 @@ class MEDVISION_PT_main_panel(bpy.types.Panel):
         layout.separator()
         box = layout.box()
         box.label(text="Visor Slicer 2D", icon='IMAGE_BACKGROUND')
-        box.prop(context.scene, "corte_plano", text="Plano")
-        box.prop(context.scene, "corte_profundidad", text="Corte")
+        box.prop(context.scene, "corte_axial", text="Axial (Top)")
+        box.prop(context.scene, "corte_coronal", text="Coronal (Front)")
+        box.prop(context.scene, "corte_sagital", text="Sagital (Right)")
 
 classes = (MEDVISION_OT_setup_slicer_view, MEDVISION_PT_main_panel)
 

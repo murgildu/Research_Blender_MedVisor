@@ -54,8 +54,11 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
             # Guardamos las dimensiones para que el deslizador sepa cuál es su límite
             context.scene["medvisor_volumen_shape"] = list(volumen_np.shape)
 
-            context.scene.corte_plano = 'AXIAL'
-            context.scene.corte_profundidad = volumen_np.shape[0] // 2
+            # context.scene.corte_plano = 'AXIAL'
+            # context.scene.corte_profundidad = volumen_np.shape[0] // 2
+            context.scene.corte_axial = volumen_np.shape[0] // 2
+            context.scene.corte_coronal = volumen_np.shape[1] // 2
+            context.scene.corte_sagital = volumen_np.shape[2] // 2
             
             # PASO 3: Marching cubes → generación de la malla inicial
             print("Paso 3: Calculando geometría 3D...")

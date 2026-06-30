@@ -78,14 +78,12 @@ def guardar_volumen(volumen_np: np.ndarray):
 
     activar_visor()
 
-def actualizar_corte(self, context):
+def _actualizar_corte_generico(context, plano, profundidad):
     global _volumen_global, _lonchas
     if _volumen_global is None:
         return
 
     volumen_np  = _volumen_global
-    plano       = context.scene.corte_plano
-    profundidad = context.scene.corte_profundidad
 
     limites = {
         'AXIAL':   volumen_np.shape[0] - 1,
@@ -94,9 +92,8 @@ def actualizar_corte(self, context):
     }
     max_limite = limites.get(plano, 0)
 
-    if profundidad > max_limite:
-        context.scene.corte_profundidad = max_limite
-        profundidad = max_limite
+    # Clampeamos el valor de seguridad
+    profundidad = min(profundidad, max_limite)
 
     try:
         if plano == 'AXIAL':
@@ -119,6 +116,15 @@ def actualizar_corte(self, context):
         for area in window.screen.areas:
             if area.type == 'VIEW_3D':
                 area.tag_redraw()
+
+def actualizar_corte_axial(self, context):
+    _actualizar_corte_generico(context, 'AXIAL', self.corte_axial)
+
+def actualizar_corte_coronal(self, context):
+    _actualizar_corte_generico(context, 'CORONAL', self.corte_coronal)
+
+def actualizar_corte_sagital(self, context):
+    _actualizar_corte_generico(context, 'SAGITAL', self.corte_sagital)
 
 def activar_visor():
     """Registra el draw handler y re-registra el HUD de texto encima."""
