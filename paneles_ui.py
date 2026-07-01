@@ -1,6 +1,7 @@
 import bpy
 import blf
 import math
+from . import visor_slicer
 
 def dibujar_nombres_medicos():
     if not bpy.context.area or bpy.context.area.type != 'VIEW_3D': return
@@ -62,6 +63,8 @@ class MEDVISION_OT_modal_zoom(bpy.types.Operator):
 
     def modal(self, context, event):
         if event.type == 'ESC':
+            self.report({'INFO'}, "Navegación 2D desactivada")
+            visor_slicer._crosshair_active = False 
             self.report({'INFO'}, "Navegación 2D desactivada")
             return {'CANCELLED'}
 
@@ -129,8 +132,47 @@ class MEDVISION_OT_modal_zoom(bpy.types.Operator):
                 elif vista == 'SAGITAL':
                     context.scene.zoom_sagital = max(0.1, min(10.0, context.scene.zoom_sagital + modificador))
                 return {'RUNNING_MODAL'}
-
+            
+        # 3. GESTIONAR CLIC PARA SINCRONIZAR VISTAS     
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS' and is_2d_view:
+            rect = visor_slicer._current_img_rect[vista]
+            
+            mouse_region_x = x - active_region.x
+            mouse_region_y = y - active_region.y
+            
+            # Evitar errores matemáticos
+            if rect['pw'] > 0 and rect['ph'] > 0:
+                # Calcular el porcentaje exacto (0.0 a 1.0) dentro de la imagen
+                rel_x = (mouse_region_x - rect['x0']) / rect['pw']
+                rel_y = (mouse_region_y - rect['y0']) / rect['ph']
+                
+                # Solo actualizar si hemos hecho clic DENTRO de la imagen
+                if 0.0 <= rel_x <= 1.0 and 0.0 <= rel_y <= 1.0:
+                    visor_slicer._crosshair_active = True 
+                    
+                    vol_shape = context.scene.get("medvisor_volumen_shape", [256, 256, 256])
+                    
+                    # Actualizamos la fuente de verdad (los cortes). 
+                    #Las 3 vistas se redibujarán automáticamente en el lugar correcto.
+                    if vista == 'AXIAL':
+                        context.scene.corte_coronal = int(rel_y * vol_shape[1])
+                        context.scene.corte_sagital = int(rel_x * vol_shape[2])
+                    elif vista == 'CORONAL':
+                        context.scene.corte_axial = int(rel_y * vol_shape[0])
+                        context.scene.corte_sagital = int(rel_x * vol_shape[2])
+                    elif vista == 'SAGITAL':
+                        context.scene.corte_axial = int(rel_y * vol_shape[0])
+                        context.scene.corte_coronal = int(rel_x * vol_shape[1])
+                    
+                    # Forzar redibujado de todas las ventanas 3D
+                    for area in context.screen.areas:
+                        if area.type == 'VIEW_3D':
+                            area.tag_redraw()
+            
+            return {'RUNNING_MODAL'}
+        
         return {'PASS_THROUGH'}
+        
 
     def invoke(self, context, event):
         if context.area.type == 'VIEW_3D':
@@ -159,6 +201,8 @@ class MEDVISION_OT_reset_view(bpy.types.Operator):
         context.scene.offset_y_coronal = 0.0
         context.scene.offset_x_sagital = 0.0
         context.scene.offset_y_sagital = 0.0
+        
+        visor_slicer._crosshair_active = False
         
         # Forzar refresco de pantalla para que la imagen vuelva al centro inmediatamente
         if context.area:

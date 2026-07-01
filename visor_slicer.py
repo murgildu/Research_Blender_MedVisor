@@ -8,6 +8,13 @@ _draw_handle    = None
 
 _lonchas  = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
 _textures = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+_crosshair_pos = {'AXIAL': [0.5, 0.5], 'CORONAL': [0.5, 0.5], 'SAGITAL': [0.5, 0.5]}
+_crosshair_active = False
+_current_img_rect = {
+    'AXIAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1},
+    'CORONAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1},
+    'SAGITAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1}
+}
 
 def _detectar_vista(rv3d):
     if rv3d is None:
@@ -156,7 +163,7 @@ def activar_visor():
 
 
 def _dibujar_slice():
-    global _textures, _lonchas
+    global _textures, _lonchas, _crosshair_pos, _crosshair_active
 
     ctx = bpy.context
     if not ctx.area or ctx.area.type != 'VIEW_3D':
@@ -205,7 +212,6 @@ def _dibujar_slice():
     else:
         pw, ph = rw, int(rw / ratio)
 
-    # --- INYECTA ESTE BLOQUE AQUÍ ---
     zoom_factor = 1.0
     offset_x = 0.0
     offset_y = 0.0
@@ -232,6 +238,8 @@ def _dibujar_slice():
     x1 = x0 + pw
     y1 = y0 + ph
 
+    _current_img_rect[view_type] = {'x0': x0, 'y0': y0, 'pw': pw, 'ph': ph}
+
     try:
         shader_img = gpu.shader.from_builtin('IMAGE')
     except Exception:
@@ -251,6 +259,52 @@ def _dibujar_slice():
     shader_img.uniform_sampler("image", tex)
     batch_img.draw(shader_img)
     gpu.state.blend_set('NONE')
+
+    # --- NUEVA LÓGICA DE CRUZ SINCRONIZADA ---
+    if _crosshair_active:
+        # 1. Recuperamos las dimensiones del volumen
+        vol_shape = ctx.scene.get("medvisor_volumen_shape", [256, 256, 256])
+        
+        # 2. Leemos la FUENTE DE VERDAD (los cortes absolutos)
+        c_ax = ctx.scene.corte_axial
+        c_cor = ctx.scene.corte_coronal
+        c_sag = ctx.scene.corte_sagital
+        
+        # 3. Convertimos los cortes a porcentajes relativos (0.0 a 1.0)
+        rz = c_ax / vol_shape[0] if vol_shape[0] > 0 else 0.5
+        ry = c_cor / vol_shape[1] if vol_shape[1] > 0 else 0.5
+        rx = c_sag / vol_shape[2] if vol_shape[2] > 0 else 0.5
+        
+        # 4. Asignamos qué porcentaje usa cada vista
+        if view_type == 'AXIAL':
+            cx, cy = rx, 1.0 - ry      # Comparte X (Sagital) e Y (Coronal)
+        elif view_type == 'CORONAL':
+            cx, cy = rx, rz      # Comparte X (Sagital) y Z (Axial)
+        elif view_type == 'SAGITAL':
+            cx, cy = ry, rz      # Comparte Y (Coronal) y Z (Axial)
+        else:
+            cx, cy = 0.5, 0.5
+
+        # 5. Calculamos los píxeles en pantalla
+        line_x = x0 + (cx * pw)
+        line_y = y0 + (cy * ph)
+        
+        verts_line = (
+            (x0, line_y), (x1, line_y), # Línea Horizontal
+            (line_x, y0), (line_x, y1)  # Línea Vertical
+        )
+        indices_line = ((0, 1), (2, 3))
+        
+        try:
+            shader_line = gpu.shader.from_builtin('UNIFORM_COLOR')
+        except:
+            shader_line = gpu.shader.from_builtin('2D_UNIFORM_COLOR')
+            
+        batch_line = batch_for_shader(shader_line, 'LINES', {"pos": verts_line}, indices=indices_line)
+        
+        shader_line.bind()
+        shader_line.uniform_float("color", (1.0, 0.0, 0.0, 0.8)) # Rojo
+        batch_line.draw(shader_line)
 
 def unregister():
     global _volumen_global, _lonchas, _textures, _draw_handle
