@@ -122,7 +122,7 @@ class MEDVISION_OT_modal_zoom(bpy.types.Operator):
         # 2. GESTIONAR EL ZOOM
         if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             if is_2d_view and vista:
-                step = 0.25
+                step = 0.25 
                 modificador = step if event.type == 'WHEELUPMOUSE' else -step
                 
                 if vista == 'AXIAL':
@@ -152,17 +152,21 @@ class MEDVISION_OT_modal_zoom(bpy.types.Operator):
                     
                     vol_shape = context.scene.get("medvisor_volumen_shape", [256, 256, 256])
                     
-                    # Actualizamos la fuente de verdad (los cortes). 
-                    #Las 3 vistas se redibujarán automáticamente en el lugar correcto.
+                    # Usamos max(1, ...) para evitar divisiones por cero o índices fuera de rango
+                    max_z = max(1, vol_shape[0] - 1)
+                    max_y = max(1, vol_shape[1] - 1)
+                    max_x = max(1, vol_shape[2] - 1)
+                    
+                    # SIMETRÍA EXACTA CON EL DIBUJO (Usamos 1.0 - rel_y para el eje vertical)
                     if vista == 'AXIAL':
-                        context.scene.corte_coronal = int(rel_y * vol_shape[1])
-                        context.scene.corte_sagital = int(rel_x * vol_shape[2])
+                        context.scene.corte_sagital = int(rel_x * max_x)
+                        context.scene.corte_coronal = int((1.0 - rel_y) * max_y)
                     elif vista == 'CORONAL':
-                        context.scene.corte_axial = int(rel_y * vol_shape[0])
-                        context.scene.corte_sagital = int(rel_x * vol_shape[2])
+                        context.scene.corte_sagital = int(rel_x * max_x)
+                        context.scene.corte_axial   = int((1.0 - rel_y) * max_z)
                     elif vista == 'SAGITAL':
-                        context.scene.corte_axial = int(rel_y * vol_shape[0])
-                        context.scene.corte_coronal = int(rel_x * vol_shape[1])
+                        context.scene.corte_coronal = int(rel_x * max_y)
+                        context.scene.corte_axial   = int((1.0 - rel_y) * max_z)
                     
                     # Forzar redibujado de todas las ventanas 3D
                     for area in context.screen.areas:

@@ -260,28 +260,29 @@ def _dibujar_slice():
     batch_img.draw(shader_img)
     gpu.state.blend_set('NONE')
 
-    # --- NUEVA LÓGICA DE CRUZ SINCRONIZADA ---
     if _crosshair_active:
-        # 1. Recuperamos las dimensiones del volumen
         vol_shape = ctx.scene.get("medvisor_volumen_shape", [256, 256, 256])
         
-        # 2. Leemos la FUENTE DE VERDAD (los cortes absolutos)
         c_ax = ctx.scene.corte_axial
         c_cor = ctx.scene.corte_coronal
         c_sag = ctx.scene.corte_sagital
         
-        # 3. Convertimos los cortes a porcentajes relativos (0.0 a 1.0)
-        rz = c_ax / vol_shape[0] if vol_shape[0] > 0 else 0.5
-        ry = c_cor / vol_shape[1] if vol_shape[1] > 0 else 0.5
-        rx = c_sag / vol_shape[2] if vol_shape[2] > 0 else 0.5
+        max_z = max(1, vol_shape[0] - 1)
+        max_y = max(1, vol_shape[1] - 1)
+        max_x = max(1, vol_shape[2] - 1)
         
-        # 4. Asignamos qué porcentaje usa cada vista
+        # 3. Convertimos los cortes a porcentajes relativos (0.0 a 1.0)
+        rz = c_ax / max_z
+        ry = c_cor / max_y
+        rx = c_sag / max_x
+        
+        # 4. Asignamos qué porcentaje usa cada vista (SIMETRÍA EXACTA CON EL CLIC)
         if view_type == 'AXIAL':
-            cx, cy = rx, 1.0 - ry      # Comparte X (Sagital) e Y (Coronal)
+            cx, cy = rx, 1.0 - ry      
         elif view_type == 'CORONAL':
-            cx, cy = rx, rz      # Comparte X (Sagital) y Z (Axial)
+            cx, cy = rx, 1.0 - rz      
         elif view_type == 'SAGITAL':
-            cx, cy = ry, rz      # Comparte Y (Coronal) y Z (Axial)
+            cx, cy = ry, 1.0 - rz      
         else:
             cx, cy = 0.5, 0.5
 
