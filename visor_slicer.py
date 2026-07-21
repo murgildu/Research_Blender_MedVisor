@@ -3,11 +3,16 @@ import numpy as np
 import gpu
 from gpu_extras.batch import batch_for_shader
 
+# --- VARIABLES GLOBALES ---
 _volumen_global = None
-_draw_handle    = None
+_volumen_pve_global = {}  # Ahora es un diccionario vacío por defecto
 
 _lonchas  = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+_lonchas_pve = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
 _textures = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+_textures_pve = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+
+_draw_handle = None
 _crosshair_pos = {'AXIAL': [0.5, 0.5], 'CORONAL': [0.5, 0.5], 'SAGITAL': [0.5, 0.5]}
 _crosshair_active = False
 _current_img_rect = {
@@ -15,6 +20,41 @@ _current_img_rect = {
     'CORONAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1},
     'SAGITAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1}
 }
+
+def actualizar_tejido(self, context):
+    """Fuerza la recarga de las 3 texturas al cambiar el menú de FSL"""
+    if _volumen_global is not None:
+        _actualizar_corte_generico(context, 'AXIAL', context.scene.corte_axial)
+        _actualizar_corte_generico(context, 'CORONAL', context.scene.corte_coronal)
+        _actualizar_corte_generico(context, 'SAGITAL', context.scene.corte_sagital)
+
+def generar_textura_rgba(ruta_mri, ruta_pve, corte_idx, plano='AXIAL'):
+    # 1. Cargar datos
+    img_mri = nib.load(ruta_mri).get_fdata()
+    img_pve = nib.load(ruta_pve).get_fdata() # Tu archivo fsl_seg_pve_1.nii.gz
+    
+    # 2. Extraer el corte (asumiendo formato AXIAL para el ejemplo)
+    corte_mri = img_mri[:, :, corte_idx]
+    corte_pve = img_pve[:, :, corte_idx]
+    
+    # 3. Normalizar la MRI original a [0.0, 1.0]
+    corte_mri = (corte_mri - corte_mri.min()) / (corte_mri.max() - corte_mri.min())
+    
+    # 4. Crear arreglo RGBA
+    # MRI original en RGB, y el valor PVE directamente en el canal Alpha
+    filas, columnas = corte_mri.shape
+    rgba = np.zeros((filas, columnas, 4), dtype=np.float32)
+    
+    # Capa base (MRI) en los 3 primeros canales
+    rgba[..., 0] = corte_mri # R
+    rgba[..., 1] = corte_mri # G
+    rgba[..., 2] = corte_mri # B
+    
+    # Capa segmentación: Asignamos el valor PVE (0.0 a 1.0) al Canal Alfa
+    # Esto hará que el tejido sea más o menos opaco según la probabilidad de FAST
+    rgba[..., 3] = corte_pve 
+    
+    return rgba
 
 def _detectar_vista(rv3d):
     if rv3d is None:
@@ -52,72 +92,114 @@ def _transformar_loncha(plano: str, loncha: np.ndarray) -> np.ndarray:
         return np.fliplr(np.rot90(loncha.T, k=3))
     return loncha
 
-def _actualizar_textura(plano: str, loncha: np.ndarray):
-    global _textures
-    vmin, vmax = loncha.min(), loncha.max()
-    datos = ((loncha - vmin) / (vmax - vmin)).astype(np.float32) if vmax > vmin else np.zeros_like(loncha, dtype=np.float32)
-
+def _actualizar_textura(plano: str, loncha_mri: np.ndarray, loncha_pve: np.ndarray = None, tejido: str = 'NONE'):
+    global _textures, _textures_pve
+    
+    # 1. TEXTURA MRI
+    vmin, vmax = loncha_mri.min(), loncha_mri.max()
+    datos = ((loncha_mri - vmin) / (vmax - vmin)).astype(np.float32) if vmax > vmin else np.zeros_like(loncha_mri, dtype=np.float32)
     h, w = datos.shape
-    alfa = (datos > 0.02).astype(np.float32)
-    rgba = np.stack([datos, datos, datos, alfa], axis=-1)
+    alfa_mri = (datos > 0.02).astype(np.float32)
+    rgba_mri = np.stack([datos, datos, datos, alfa_mri], axis=-1)
+    buf_mri = gpu.types.Buffer('FLOAT', h * w * 4, rgba_mri.flatten().tolist())
+    _textures[plano] = gpu.types.GPUTexture((w, h), format='RGBA32F', data=buf_mri)
 
-    buf = gpu.types.Buffer('FLOAT', h * w * 4, rgba.flatten().tolist())
-    _textures[plano] = gpu.types.GPUTexture((w, h), format='RGBA32F', data=buf)
+    # 2. TEXTURA PVE (Capa superpuesta dinámica)
+    if loncha_pve is not None and tejido != 'NONE':
+        r = np.ones_like(loncha_pve, dtype=np.float32)
+        g = np.ones_like(loncha_pve, dtype=np.float32)
+        b = np.ones_like(loncha_pve, dtype=np.float32)
+        
+        # Asignamos colores médicos distintivos según la clase
+        if tejido == 'PVE_1':   # Materia Gris (Verde)
+            r *= 0.2; g *= 0.9; b *= 0.2
+        elif tejido == 'PVE_2': # Materia Blanca (Naranja/Rojo)
+            r *= 0.9; g *= 0.4; b *= 0.1
+        elif tejido == 'PVE_0': # LCR (Azul)
+            r *= 0.1; g *= 0.4; b *= 0.9
 
-def guardar_volumen(volumen_np: np.ndarray):
-    """Guarda el volumen y pre-calcula las tres vistas al 50 % """
-    global _volumen_global, _lonchas
+        alfa_pve = np.clip(loncha_pve, 0.0, 1.0).astype(np.float32)
+        rgba_pve = np.stack([r, g, b, alfa_pve], axis=-1)
+        buf_pve = gpu.types.Buffer('FLOAT', h * w * 4, rgba_pve.flatten().tolist())
+        _textures_pve[plano] = gpu.types.GPUTexture((w, h), format='RGBA32F', data=buf_pve)
+    else:
+        _textures_pve[plano] = None
+
+def guardar_volumen(volumen_np: np.ndarray, volumenes_pve_dict: dict = None):
+    global _volumen_global, _volumen_pve_global, _lonchas, _lonchas_pve
 
     _volumen_global = volumen_np.astype(np.float32)
+    if volumenes_pve_dict:
+        _volumen_pve_global = {k: v.astype(np.float32) for k, v in volumenes_pve_dict.items()}
+    else:
+        _volumen_pve_global = {}
 
+    tejido = bpy.context.scene.tejido_visualizado
     z_mid = volumen_np.shape[0] // 2
     y_mid = volumen_np.shape[1] // 2
     x_mid = volumen_np.shape[2] // 2
 
-    for plano, raw in (
+    for plano, raw_mri in (
         ('AXIAL',   volumen_np[z_mid, :, :]),
         ('CORONAL', volumen_np[:, y_mid, :]),
         ('SAGITAL', volumen_np[:, :, x_mid]),
     ):
-        loncha = _transformar_loncha(plano, raw)
-        _lonchas[plano] = loncha
-        _actualizar_textura(plano, loncha)
+        loncha_mri = _transformar_loncha(plano, raw_mri)
+        _lonchas[plano] = loncha_mri
+        
+        loncha_pve = None
+        if _volumen_pve_global and tejido in _volumen_pve_global and tejido != 'NONE':
+            matriz_tejido = _volumen_pve_global[tejido]
+            if plano == 'AXIAL': raw_pve = matriz_tejido[z_mid, :, :]
+            elif plano == 'CORONAL': raw_pve = matriz_tejido[:, y_mid, :]
+            elif plano == 'SAGITAL': raw_pve = matriz_tejido[:, :, x_mid]
+            
+            loncha_pve = _transformar_loncha(plano, raw_pve)
+            _lonchas_pve[plano] = loncha_pve
+
+        _actualizar_textura(plano, loncha_mri, loncha_pve, tejido)
 
     activar_visor()
 
 def _actualizar_corte_generico(context, plano, profundidad):
-    global _volumen_global, _lonchas
-    if _volumen_global is None:
-        return
+    global _volumen_global, _volumen_pve_global, _lonchas, _lonchas_pve
+    if _volumen_global is None: return
 
-    volumen_np  = _volumen_global
-
+    volumen_np = _volumen_global
+    tejido = context.scene.tejido_visualizado
+    
     limites = {
         'AXIAL':   volumen_np.shape[0] - 1,
         'CORONAL': volumen_np.shape[1] - 1,
         'SAGITAL': volumen_np.shape[2] - 1,
     }
     max_limite = limites.get(plano, 0)
-
-    # Clampeamos el valor de seguridad
     profundidad = min(profundidad, max_limite)
 
     try:
+        raw_pve = None
         if plano == 'AXIAL':
-            raw = volumen_np[profundidad, :, :]
+            raw_mri = volumen_np[profundidad, :, :]
+            if _volumen_pve_global and tejido in _volumen_pve_global and tejido != 'NONE':
+                raw_pve = _volumen_pve_global[tejido][profundidad, :, :]
         elif plano == 'CORONAL':
-            raw = volumen_np[:, profundidad, :]
+            raw_mri = volumen_np[:, profundidad, :]
+            if _volumen_pve_global and tejido in _volumen_pve_global and tejido != 'NONE':
+                raw_pve = _volumen_pve_global[tejido][:, profundidad, :]
         elif plano == 'SAGITAL':
-            raw = volumen_np[:, :, profundidad]
-        else:
-            return
-    except IndexError:
-        return
+            raw_mri = volumen_np[:, :, profundidad]
+            if _volumen_pve_global and tejido in _volumen_pve_global and tejido != 'NONE':
+                raw_pve = _volumen_pve_global[tejido][:, :, profundidad]
+        else: return
+    except IndexError: return
 
-    loncha = _transformar_loncha(plano, raw)
-    _lonchas[plano] = loncha
-    _actualizar_textura(plano, loncha)
-    activar_visor()
+    loncha_mri = _transformar_loncha(plano, raw_mri)
+    _lonchas[plano] = loncha_mri
+    
+    loncha_pve = _transformar_loncha(plano, raw_pve) if raw_pve is not None else None
+    _lonchas_pve[plano] = loncha_pve
+
+    _actualizar_textura(plano, loncha_mri, loncha_pve, tejido)
 
     for window in context.window_manager.windows:
         for area in window.screen.areas:
@@ -255,9 +337,18 @@ def _dibujar_slice():
     )
 
     gpu.state.blend_set('ALPHA')
+    
+    # --- PASADA 1: Dibujar Resonancia Magnética ---
     shader_img.bind()
     shader_img.uniform_sampler("image", tex)
     batch_img.draw(shader_img)
+    
+    # --- PASADA 2: Dibujar Segmentación (PVE) por encima ---
+    tex_pve = _textures_pve[view_type]
+    if tex_pve is not None:
+        shader_img.uniform_sampler("image", tex_pve)
+        batch_img.draw(shader_img)
+
     gpu.state.blend_set('NONE')
 
     if _crosshair_active:
@@ -308,13 +399,17 @@ def _dibujar_slice():
         batch_line.draw(shader_line)
 
 def unregister():
-    global _volumen_global, _lonchas, _textures, _draw_handle
+    global _volumen_global, _volumen_pve_global, _lonchas, _lonchas_pve, _textures, _textures_pve, _draw_handle
     if _draw_handle is not None:
         try:
             bpy.types.SpaceView3D.draw_handler_remove(_draw_handle, 'WINDOW')
         except Exception:
             pass
         _draw_handle = None
+        
     _volumen_global = None
+    _volumen_pve_global = {}
     _lonchas  = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+    _lonchas_pve = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
     _textures = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+    _textures_pve = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}

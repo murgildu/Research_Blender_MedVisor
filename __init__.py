@@ -108,7 +108,17 @@ def register():
         update=visor_slicer.forzar_redibujado
     )
 
-    # --- VARIABLES DE DESPLAZAMIENTO (PAN) ---
+    bpy.types.Scene.tejido_visualizado = bpy.props.EnumProperty(
+        name="Tejido a visualizar",
+        items=[
+            ('NONE', 'Original', 'Ver MRI sin segmentar'),
+            ('PVE_1', 'Materia Gris', 'GM'),
+            ('PVE_2', 'Materia Blanca', 'WM'),
+            ('PVE_0', 'LCR', 'LCR'),
+        ],
+        update=visor_slicer.actualizar_tejido
+    )  
+    # --- VARIABLES DE DESPLAZAMIENTO 
     bpy.types.Scene.offset_x_axial = bpy.props.FloatProperty(default=0.0, update=visor_slicer.forzar_redibujado)
     bpy.types.Scene.offset_y_axial = bpy.props.FloatProperty(default=0.0, update=visor_slicer.forzar_redibujado)
     

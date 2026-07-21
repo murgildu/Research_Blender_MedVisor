@@ -3,6 +3,7 @@ import os
 import subprocess
 import tempfile
 import math
+import time
 import SimpleITK as sitk
 import numpy as np
 from skimage import measure
@@ -14,6 +15,8 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
     bl_description = "Ejecuta HD-BET en segundo plano, centra la geometría y corrige la orientación anatómica"
 
     def execute(self, context):
+        tiempo_inicio = time.time()
+        
         ruta_archivo = bpy.path.abspath(context.scene.mri_filepath)
         ruta_hdbet = bpy.path.abspath(context.scene.hdbet_filepath)
 
@@ -29,33 +32,61 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
             temp_dir = tempfile.gettempdir()
             salida_hdbet = os.path.join(temp_dir, "cerebro_limpio_hdbet.nii.gz")
 
-            # PASO 1: Llamada a la Inteligencia Artificial
+            # PASO 1: Llamada a la Inteligencia Artificial (HD-BET)
             print("Paso 1: Ejecutando HD-BET en segundo plano...")
             self.report({'INFO'}, "Procesando IA...")
             
             comando = [ruta_hdbet, "-i", ruta_archivo, "-o", salida_hdbet]
             subprocess.run(comando, check=True)
 
-            # PASO 2: Leer el resultado generado por la IA
-            print("Paso 2: Leyendo volumen limpio...")
-            imagen_3d = sitk.ReadImage(salida_hdbet)
+            # --- PASO 1.5 - Segmentación Tisular (FSL FAST vía WSL) ---
+            print("Paso 1.5: Segmentando tejidos con FSL...")
+            self.report({'INFO'}, "Segmentando con FAST...")
             
-            # ORIENTACIÓN DEFINITIVA: RPS ancla el cerebro al sistema de Blender al 100%
+            prefijo_fsl = os.path.join(temp_dir, "fsl_seg")
+            
+            def windows_a_wsl(ruta):
+                disco, resto = os.path.splitdrive(ruta)
+                return f"/mnt/{disco.lower()[0]}{resto.replace(os.sep, '/')}"
+                
+            wsl_entrada = windows_a_wsl(salida_hdbet)
+            wsl_salida = windows_a_wsl(prefijo_fsl)
+            
+            comando_fsl = f"fast -o {wsl_salida} -n 3 -p {wsl_entrada}"
+            comando_wsl = ["wsl", "bash", "-lc", comando_fsl]
+            
+            subprocess.run(comando_wsl, check=True)
+
+            # --- PASO 2: Leer volúmenes (Original + FSL) ---
+            mapas_fsl = {
+                'PVE_0': f"{prefijo_fsl}_pve_0.nii.gz",
+                'PVE_1': f"{prefijo_fsl}_pve_1.nii.gz",
+                'PVE_2': f"{prefijo_fsl}_pve_2.nii.gz"
+            }
+
+            print("Paso 2: Leyendo volúmenes y orientando...")
             filtro_orientacion = sitk.DICOMOrientImageFilter()
             filtro_orientacion.SetDesiredCoordinateOrientation("RPS")
+
+            # 1. Procesar y alinear MRI Original
+            imagen_3d = sitk.ReadImage(salida_hdbet)
             imagen_3d = filtro_orientacion.Execute(imagen_3d)
-            
-            espaciado = imagen_3d.GetSpacing()
             volumen_np = sitk.GetArrayFromImage(imagen_3d)
+            espaciado = imagen_3d.GetSpacing()
 
-            # Le pasamos la matriz con todo el interior al visor 2D
-            visor_slicer.guardar_volumen(volumen_np)
+            # 2. Procesar y alinear las 3 capas PVE
+            volumenes_pve_dict = {}
+            for clave, ruta_mapa in mapas_fsl.items():
+                if os.path.exists(ruta_mapa):
+                    img_pve = sitk.ReadImage(ruta_mapa)
+                    img_pve = filtro_orientacion.Execute(img_pve)
+                    volumenes_pve_dict[clave] = sitk.GetArrayFromImage(img_pve)
+
+            # Le pasamos TODO al visor 2D empaquetado en un diccionario
+            visor_slicer.guardar_volumen(volumen_np, volumenes_pve_dict)
             
-            # Guardamos las dimensiones para que el deslizador sepa cuál es su límite
+            # Guardamos las dimensiones para el HUD y los cortes
             context.scene["medvisor_volumen_shape"] = list(volumen_np.shape)
-
-            # context.scene.corte_plano = 'AXIAL'
-            # context.scene.corte_profundidad = volumen_np.shape[0] // 2
             context.scene.corte_axial = volumen_np.shape[0] // 2
             context.scene.corte_coronal = volumen_np.shape[1] // 2
             context.scene.corte_sagital = volumen_np.shape[2] // 2
@@ -67,10 +98,10 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
                 spacing=(espaciado[2], espaciado[1], espaciado[0])
             )
 
-            # NUEVO: Reordenar los ejes de NumPy (Z,Y,X) a Blender (X,Y,Z)
+            # Reordenar los ejes de NumPy (Z,Y,X) a Blender (X,Y,Z)
             verts = verts[:, [2, 1, 0]]
 
-            # REFINAMIENTO A: Centrar la geometría en el origen (0,0,0) mediante NumPy
+            # Centrar la geometría en el origen
             centro_bounding_box = (np.max(verts, axis=0) + np.min(verts, axis=0)) / 2.0
             verts = verts - centro_bounding_box
 
@@ -93,16 +124,25 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
                             with context.temp_override(area=area, region=region):
                                 bpy.ops.view3d.view_selected(use_all_regions=True)
 
-            # Post-procesado: Suavizado superficial adaptativo mediante modificador nativo
+            # Post-procesado: Suavizado superficial adaptativo
             smooth = obj.modifiers.new(name="Smooth", type='SMOOTH')
             smooth.factor = 0.5
             smooth.iterations = 10
             
-            self.report({'INFO'}, "Cerebro extraido, centrado y orientado correctamente")
+            # --- FINAL: Cálculos de tiempo ---
+            tiempo_fin = time.time()
+            tiempo_total = tiempo_fin - tiempo_inicio
+            minutos = int(tiempo_total // 60)
+            segundos = tiempo_total % 60
+            
+            mensaje = f"Cerebro extraido correctamente en {minutos}m {segundos:.2f}s"
+            print(f"--- {mensaje} ---")
+            self.report({'INFO'}, mensaje)
+            
             return {'FINISHED'}
 
         except subprocess.CalledProcessError as e:
-            self.report({'ERROR'}, "Fallo al ejecutar HD-BET. Revisa la consola para mas detalles.")
+            self.report({'ERROR'}, "Fallo al ejecutar subproceso. Revisa la consola para mas detalles.")
             return {'CANCELLED'}
         except Exception as e:
             import traceback
@@ -114,7 +154,6 @@ def register():
     try:
         bpy.utils.register_class(MEDVISION_OT_extract_solid_brain)
     except ValueError:
-        # Si ya estaba registrada, la desregistramos y la volvemos a registrar
         bpy.utils.unregister_class(MEDVISION_OT_extract_solid_brain)
         bpy.utils.register_class(MEDVISION_OT_extract_solid_brain)
 

@@ -234,7 +234,9 @@ class MEDVISION_PT_main_panel(bpy.types.Panel):
         box = layout.box()
         box.label(text="Visor Slicer 2D", icon='IMAGE_BACKGROUND')
 
-        # Dejamos solo los cortes, mucho más limpio
+        box.prop(context.scene, "tejido_visualizado", text="Capa FSL")
+        box.separator()
+
         box.prop(context.scene, "corte_axial", text="Axial (Top)")
         box.prop(context.scene, "corte_coronal", text="Coronal (Front)")
         box.prop(context.scene, "corte_sagital", text="Sagital (Right)")

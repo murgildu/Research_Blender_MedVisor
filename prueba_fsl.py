@@ -16,7 +16,7 @@ def ejecutar_prueba_fsl(input_nifti, output_dir):
     
     try:
         # Ejecutar FAST para las 3 clases (GM, WM, CSF)
-        fast(imgs=input_nifti, out=prefijo_salida, n_classes=3)
+        fast(imgs=input_nifti, out=prefijo_salida, n_classes=3, p=True)
         
         fin_tiempo = time.time()
         tiempo_total = fin_tiempo - inicio_tiempo
