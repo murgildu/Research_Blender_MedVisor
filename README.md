@@ -1,10 +1,14 @@
 # Research_Blender_MedVisor
 
-Visualización de imágenes médicas con Blender. Automatiza el flujo de trabajo de segmentación médica permitiendo importar volúmenes de Resonancia Magnética (MRI) en formato NIfTI (`.nii.gz`), ejecutar la red neuronal HD-BET en segundo plano y generar automáticamente una malla 3D optimizada en el *viewport* de Blender junto a un entorno de visualización síncrono.
+MedVision es un add-on para Blender (v3.6+) que automatiza la segmentación y visualización avanzada de Resonancias Magnéticas (MRI). En un solo clic, la herramienta aísla el cerebro mediante una Inteligencia Artificial de terceros llamada HD-Bet, clasifica sus tejidos anatómicos y genera un entorno clínico interactivo: una malla 3D sincronizada con visores ortogonales 2D que superponen la segmentación anatómica en tiempo real.
 
 ## Prerrequisitos del Sistema
 
-Dado que el procesamiento pesado recae sobre modelos de Inteligencia Artificial, **MedVision requiere tener instalado HD-BET en tu sistema operativo** antes de usar el addon.
+Este add-on utiliza una arquitectura de procesamiento híbrida. Dado que Blender opera en Windows pero las herramientas neurocientíficas más robustas son nativas de entornos UNIX, MedVision actúa como puente entre ambos sistemas. Se necesita:
+
+1. HD-BET (Windows): La IA encargada de la extracción craneal (skull-stripping)
+2. WSL (Windows Subsystem for Linux): El subsistema integrado de Windows. Actúa como puente para que Blender pueda ejecutar comandos nativos de Linux de forma transparente.
+3. Librería FSL (Linux / WSL): El motor estadístico utilizado para segmentar los tejidos.
 
 ### Dependencias de Python e IA:
 Para que HD-BET funcione correctamente, es requisito indispensable contar con **PyTorch**. Ten en cuenta que estas librerías de IA suelen ir un paso por detrás del desarrollo de software general, por lo que **no admiten las versiones más recientes de Python**. Asegúrate de instalarlo utilizando una versión de Python compatible y estable.
@@ -33,6 +37,7 @@ Una vez activado, el addon configurará el entorno automáticamente:
 3. **Archivo MRI:** Utiliza el selector para elegir tu volumen en formato `.nii.gz`.
 4. **Ruta HD-BET:** Indica la ruta completa al ejecutable de `hd-bet` que instalaste en tu sistema.
 5. **Extraer Cerebro:** Haz clic en este botón. Blender ejecutará el proceso en segundo plano, segmentará el parénquima cerebral y renderizará la malla tridimensional centrada y orientada automáticamente en el centro de la escena.
+6. Utiliza el nuevo selector Capa FSL para alternar interactivamente la visualización entre Materia Gris, Materia Blanca o Líquido Cefalorraquídeo.
 
 ![Demostración de MedVision en tiempo real](documentacion/video_funcionamiento01.gif)
 
@@ -41,9 +46,13 @@ Una vez activado, el addon configurará el entorno automáticamente:
 El núcleo de MedVision se divide en un pipeline de procesamiento de datos y un motor de renderizado en tiempo real optimizado para no generar objetos basura en la escena de Blender:
 
 1. **Ingesta y Segmentación:** Al cargar el volumen NIfTI, el addon invoca el ejecutable de `HD-BET` a través de un subproceso asíncrono en segundo plano, aislando el tejido cerebral del cráneo.
-2. **Estandarización Espacial:** El volumen segmentado se procesa mediante matrices de orientación clínica (espacio de coordenadas RPS/RAS). Esto garantiza la correspondencia anatómica exacta (saber inequívocamente dónde se ubican las regiones anterior, posterior, superior e inferior del paciente).
+
+2. **Segmentación (FSL vía WSL):** Un comando puente entra a Linux y calcula las Estimaciones de Volumen Parcial (PVE), separando probabilísticamente los tejidos mediante modelos de Markov.
+
 3. **Reconstrucción 3D:** Se aplica el algoritmo de *Marching Cubes* sobre los vóxeles indexados para extraer la superficie cerebral y transformarla en una malla de vértices nativa de Blender.
-4. **Motor Slicer 2D (GPU Shaders):** Las lonchas bidimensionales correspondientes a los planos Axial, Coronal y Sagital se extraen de la matriz de NumPy en tiempo real. Mediante el módulo `gpu` de Blender, se inyectan como texturas directamente en el búfer de dibujo de la gráfica (`draw_handler`). 
+
+4. **Renderizado 2D (GPU):** Las lonchas bidimensionales correspondientes a los planos Axial, Coronal y Sagital se extraen de la matriz de NumPy en tiempo real. Mediante el módulo `gpu` de Blender, se inyectan como texturas directamente en el búfer de dibujo de la gráfica (`draw_handler`). 
+
    * Un lienzo opaco inteligente oculta de forma óptica la geometría 3D en las vistas ortogonales (`TOP`, `FRONT`, `RIGHT`), permitiendo inspeccionar las radiografías limpias y con un HUD de texto superpuesto mientras el modelo 3D permanece visible únicamente en la vista de perspectiva.
 
 ## Reconocimientos y Herramientas de Terceros
@@ -53,6 +62,7 @@ Este proyecto es posible gracias a la integración y el uso de herramientas espe
 * **[HD-BET (High-Definition Brain Extraction Tool)](https://github.com/MIC-DKFZ/HD-BET):** Desarrollado por el departamento de *Medical Image Computing* del DKFZ (Centro Alemán de Investigación Oncológica). MedVision utiliza este algoritmo de última generación basado en redes neuronales convolucionales (U-Net artificiales) para realizar la extracción craneal automatizada con precisión clínica.
 * **[SimpleITK (Insight Segmentation and Registration Toolkit)](https://simpleitk.org/):** Componente esencial utilizado para la manipulación de imágenes médicas y el procesamiento de los metadatos de orientación espacial de los archivos NIfTI.
 * **[NumPy](https://numpy.org/):** Utilizado para la gestión matricial de alta velocidad de los vóxeles tridimensionales, permitiendo aplicar las operaciones de transposición y rotación necesarias para sincronizar los planos de corte con las ventanas de Blender.
+* **[FSL](https://fsl.fmrib.ox.ac.uk/fsl/docs/):** Desarrollado por la Universidad de Oxford. Su módulo FAST rige el modelado estadístico y la separación tisular del add-on.
 
 ## Limitaciones y Alcance
 
