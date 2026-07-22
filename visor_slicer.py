@@ -95,27 +95,34 @@ def _transformar_loncha(plano: str, loncha: np.ndarray) -> np.ndarray:
 def _actualizar_textura(plano: str, loncha_mri: np.ndarray, loncha_pve: np.ndarray = None, tejido: str = 'NONE'):
     global _textures, _textures_pve
     
-    # 1. TEXTURA MRI
+    # 1. TEXTURA MRI BASE
     vmin, vmax = loncha_mri.min(), loncha_mri.max()
     datos = ((loncha_mri - vmin) / (vmax - vmin)).astype(np.float32) if vmax > vmin else np.zeros_like(loncha_mri, dtype=np.float32)
     h, w = datos.shape
-    alfa_mri = (datos > 0.02).astype(np.float32)
+    
+    # MÁSCARA AISLANTE
+    if tejido.startswith('SOLO_') and loncha_pve is not None:
+        # Si elegimos "Aislar", hacemos transparente todo lo que no tenga probabilidad de ser este tejido
+        alfa_mri = (loncha_pve > 0.50).astype(np.float32)
+    else:
+        # lo normal: todo es opaco excepto el fondo negro
+        alfa_mri = (datos > 0.02).astype(np.float32)
+ 
     rgba_mri = np.stack([datos, datos, datos, alfa_mri], axis=-1)
     buf_mri = gpu.types.Buffer('FLOAT', h * w * 4, rgba_mri.flatten().tolist())
     _textures[plano] = gpu.types.GPUTexture((w, h), format='RGBA32F', data=buf_mri)
 
-    # 2. TEXTURA PVE (Capa superpuesta dinámica)
-    if loncha_pve is not None and tejido != 'NONE':
+    # 2. TEXTURA PVE (Capa superpuesta de colores)
+    if loncha_pve is not None and tejido.startswith('PVE_'):
         r = np.ones_like(loncha_pve, dtype=np.float32)
         g = np.ones_like(loncha_pve, dtype=np.float32)
         b = np.ones_like(loncha_pve, dtype=np.float32)
         
-        # Asignamos colores médicos distintivos según la clase
-        if tejido == 'PVE_1':   # Materia Gris (Verde)
+        if tejido == 'PVE_1':   
             r *= 0.2; g *= 0.9; b *= 0.2
-        elif tejido == 'PVE_2': # Materia Blanca (Naranja/Rojo)
+        elif tejido == 'PVE_2': 
             r *= 0.9; g *= 0.4; b *= 0.1
-        elif tejido == 'PVE_0': # LCR (Azul)
+        elif tejido == 'PVE_0': 
             r *= 0.1; g *= 0.4; b *= 0.9
 
         alfa_pve = np.clip(loncha_pve, 0.0, 1.0).astype(np.float32)
@@ -135,6 +142,10 @@ def guardar_volumen(volumen_np: np.ndarray, volumenes_pve_dict: dict = None):
         _volumen_pve_global = {}
 
     tejido = bpy.context.scene.tejido_visualizado
+    
+    # Convierte "SOLO_1" en "PVE_1" para buscarlo en diccionario
+    clave_diccionario = tejido.replace('SOLO_', 'PVE_')
+    
     z_mid = volumen_np.shape[0] // 2
     y_mid = volumen_np.shape[1] // 2
     x_mid = volumen_np.shape[2] // 2
@@ -148,8 +159,9 @@ def guardar_volumen(volumen_np: np.ndarray, volumenes_pve_dict: dict = None):
         _lonchas[plano] = loncha_mri
         
         loncha_pve = None
-        if _volumen_pve_global and tejido in _volumen_pve_global and tejido != 'NONE':
-            matriz_tejido = _volumen_pve_global[tejido]
+        # Buscamos usando la clave traducida
+        if _volumen_pve_global and clave_diccionario in _volumen_pve_global and clave_diccionario != 'NONE':
+            matriz_tejido = _volumen_pve_global[clave_diccionario]
             if plano == 'AXIAL': raw_pve = matriz_tejido[z_mid, :, :]
             elif plano == 'CORONAL': raw_pve = matriz_tejido[:, y_mid, :]
             elif plano == 'SAGITAL': raw_pve = matriz_tejido[:, :, x_mid]
@@ -157,6 +169,7 @@ def guardar_volumen(volumen_np: np.ndarray, volumenes_pve_dict: dict = None):
             loncha_pve = _transformar_loncha(plano, raw_pve)
             _lonchas_pve[plano] = loncha_pve
 
+        # A la textura se le pasa el 'tejido' original ('SOLO_1') para modo recorte
         _actualizar_textura(plano, loncha_mri, loncha_pve, tejido)
 
     activar_visor()
@@ -167,6 +180,9 @@ def _actualizar_corte_generico(context, plano, profundidad):
 
     volumen_np = _volumen_global
     tejido = context.scene.tejido_visualizado
+    
+    # Convierte "SOLO_1" en "PVE_1"
+    clave_diccionario = tejido.replace('SOLO_', 'PVE_')
     
     limites = {
         'AXIAL':   volumen_np.shape[0] - 1,
@@ -180,16 +196,16 @@ def _actualizar_corte_generico(context, plano, profundidad):
         raw_pve = None
         if plano == 'AXIAL':
             raw_mri = volumen_np[profundidad, :, :]
-            if _volumen_pve_global and tejido in _volumen_pve_global and tejido != 'NONE':
-                raw_pve = _volumen_pve_global[tejido][profundidad, :, :]
+            if _volumen_pve_global and clave_diccionario in _volumen_pve_global and clave_diccionario != 'NONE':
+                raw_pve = _volumen_pve_global[clave_diccionario][profundidad, :, :]
         elif plano == 'CORONAL':
             raw_mri = volumen_np[:, profundidad, :]
-            if _volumen_pve_global and tejido in _volumen_pve_global and tejido != 'NONE':
-                raw_pve = _volumen_pve_global[tejido][:, profundidad, :]
+            if _volumen_pve_global and clave_diccionario in _volumen_pve_global and clave_diccionario != 'NONE':
+                raw_pve = _volumen_pve_global[clave_diccionario][:, profundidad, :]
         elif plano == 'SAGITAL':
             raw_mri = volumen_np[:, :, profundidad]
-            if _volumen_pve_global and tejido in _volumen_pve_global and tejido != 'NONE':
-                raw_pve = _volumen_pve_global[tejido][:, :, profundidad]
+            if _volumen_pve_global and clave_diccionario in _volumen_pve_global and clave_diccionario != 'NONE':
+                raw_pve = _volumen_pve_global[clave_diccionario][:, :, profundidad]
         else: return
     except IndexError: return
 

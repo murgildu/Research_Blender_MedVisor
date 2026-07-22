@@ -109,15 +109,18 @@ def register():
     )
 
     bpy.types.Scene.tejido_visualizado = bpy.props.EnumProperty(
-        name="Tejido a visualizar",
+        name="Capa FSL",
         items=[
-            ('NONE', 'Original', 'Ver MRI sin segmentar'),
-            ('PVE_1', 'Materia Gris', 'GM'),
-            ('PVE_2', 'Materia Blanca', 'WM'),
-            ('PVE_0', 'LCR', 'LCR'),
+            ('NONE', 'Completo'),
+            ('PVE_1', 'Colorear Materia Gris'),
+            ('PVE_2', 'Colorear Materia Blanca'),
+            ('PVE_0', 'Colorear LCR'),
+            ('SOLO_1', 'Aislar Materia Gris', 'Ocultar todo excepto Materia Gris'),
+            ('SOLO_2', 'Aislar Materia Blanca', 'Ocultar todo excepto Materia Blanca'),
+            ('SOLO_0', 'Aislar LCR', 'Ocultar todo excepto LCR')
         ],
         update=visor_slicer.actualizar_tejido
-    )  
+    )
     # --- VARIABLES DE DESPLAZAMIENTO 
     bpy.types.Scene.offset_x_axial = bpy.props.FloatProperty(default=0.0, update=visor_slicer.forzar_redibujado)
     bpy.types.Scene.offset_y_axial = bpy.props.FloatProperty(default=0.0, update=visor_slicer.forzar_redibujado)
