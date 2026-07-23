@@ -111,10 +111,10 @@ def register():
     bpy.types.Scene.tejido_visualizado = bpy.props.EnumProperty(
         name="Capa FSL",
         items=[
-            ('NONE', 'Completo'),
-            ('PVE_1', 'Colorear Materia Gris'),
-            ('PVE_2', 'Colorear Materia Blanca'),
-            ('PVE_0', 'Colorear LCR'),
+            ('NONE', 'Completo', 'Ver MRI completo sin segmentar'),
+            ('PVE_1', 'Materia Gris', 'Capa de color sobre MRI'),
+            ('PVE_2', 'Materia Blanca', 'Capa de color sobre MRI'),
+            ('PVE_0', 'LCR', 'Capa de color sobre MRI'),
             ('SOLO_1', 'Aislar Materia Gris', 'Ocultar todo excepto Materia Gris'),
             ('SOLO_2', 'Aislar Materia Blanca', 'Ocultar todo excepto Materia Blanca'),
             ('SOLO_0', 'Aislar LCR', 'Ocultar todo excepto LCR')
