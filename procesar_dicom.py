@@ -46,6 +46,9 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
         self.ruta_archivo = bpy.path.abspath(context.scene.mri_filepath)
         self.ruta_hdbet = bpy.path.abspath(context.scene.hdbet_filepath)
 
+        # 1. Limpieza total de la memoria ANTES de validar o procesar
+        visor_slicer.estado.limpiar()
+
         if not os.path.isfile(self.ruta_archivo) or not self.ruta_archivo.endswith('.nii.gz'):
             self.report({'ERROR'}, "Selecciona un archivo MRI válido (.nii.gz).")
             return {'CANCELLED'}
@@ -56,12 +59,12 @@ class MEDVISION_OT_extract_solid_brain(bpy.types.Operator):
 
         self.report({'INFO'}, "Procesando IA y FSL en segundo plano... Blender no se congelará.")
         
-        # 1. Preparamos la comunicación (Queue) y el temporizador
+        # 2. Preparamos la comunicación (Queue) y el temporizador
         self._queue = queue.Queue()
         self._timer = context.window_manager.event_timer_add(0.5, window=context.window)
         context.window_manager.modal_handler_add(self)
 
-        # 2. Lanzamos el trabajo pesado a un hilo distinto
+        # 3. Lanzamos el trabajo pesado a un hilo distinto
         self._thread = threading.Thread(target=self.ejecutar_subprocesos)
         self._thread.start()
         

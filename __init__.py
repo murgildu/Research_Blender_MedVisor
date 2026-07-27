@@ -133,6 +133,8 @@ def register():
 
     bpy.app.timers.register(_crear_workspace_medvision, first_interval=1.0)
 
+    if visor_slicer.limpiar_memoria_visor not in bpy.app.handlers.load_pre:
+        bpy.app.handlers.load_pre.append(visor_slicer.limpiar_memoria_visor)
 
 def unregister():
     for fn in (_crear_workspace_medvision, _configurar_entorno):
@@ -141,12 +143,15 @@ def unregister():
 
     # Limpia el HUD si sigue activo
     if "hud_medico_handle" in bpy.app.driver_namespace:
-        try:
-            bpy.types.SpaceView3D.draw_handler_remove(
-                bpy.app.driver_namespace["hud_medico_handle"], 'WINDOW')
-            del bpy.app.driver_namespace["hud_medico_handle"]
-        except Exception:
-            pass
+            try:
+                bpy.types.SpaceView3D.draw_handler_remove(
+                    bpy.app.driver_namespace["hud_medico_handle"], 'WINDOW'
+                )
+            except ValueError:
+                pass
+            finally:
+                if "hud_medico_handle" in bpy.app.driver_namespace:
+                    del bpy.app.driver_namespace["hud_medico_handle"]
 
     del bpy.types.Scene.mri_filepath
     del bpy.types.Scene.hdbet_filepath
@@ -165,30 +170,21 @@ def unregister():
         del bpy.types.Scene.zoom_coronal
     if hasattr(bpy.types.Scene, "zoom_sagital"):
         del bpy.types.Scene.zoom_sagital
-    
-    if hasattr(bpy.types.Scene, "zoom_sagital"):
-        del bpy.types.Scene.zoom_sagital
 
     # --- LIMPIEZA DE LAS VARIABLES DE PAN (DESPLAZAMIENTO) ---
     if hasattr(bpy.types.Scene, "offset_x_axial"):
         del bpy.types.Scene.offset_x_axial
-    if hasattr(bpy.types.Scene, "offset_y_axial"):
-        del bpy.types.Scene.offset_y_axial
-        
     if hasattr(bpy.types.Scene, "offset_x_coronal"):
         del bpy.types.Scene.offset_x_coronal
-    if hasattr(bpy.types.Scene, "offset_y_coronal"):
-        del bpy.types.Scene.offset_y_coronal
-        
     if hasattr(bpy.types.Scene, "offset_x_sagital"):
         del bpy.types.Scene.offset_x_sagital
-    if hasattr(bpy.types.Scene, "offset_y_sagital"):
-        del bpy.types.Scene.offset_y_sagital
-        
+
+    if visor_slicer.limpiar_memoria_visor in bpy.app.handlers.load_pre:
+        bpy.app.handlers.load_pre.remove(visor_slicer.limpiar_memoria_visor)
+    
     visor_slicer.unregister()
     paneles_ui.unregister()
     procesar_dicom.unregister()
-    
 
 if __name__ == "__main__":
     register()

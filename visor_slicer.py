@@ -2,6 +2,7 @@ import bpy
 import numpy as np
 import gpu
 from gpu_extras.batch import batch_for_shader
+from bpy.app.handlers import persistent
 
 class EstadoVisor:
     #Clase para meter todo el estado en memoria del visor 
@@ -40,8 +41,17 @@ class EstadoVisor:
 
 estado = EstadoVisor()
 
+@persistent
+def limpiar_memoria_visor(escena_dummy):
+    """
+    forzar la liberación de memoria (RAM/VRAM)
+    """
+    if estado is not None:
+        estado.limpiar()
+        print("INFO: Memoria del visor médico liberada")
+
 def actualizar_tejido(self, context):
-    """Fuerza la recarga de las 3 texturas al cambiar el menú de FSL"""
+    """Fuerza la recarga de las 3 texturas al cambiar el menu de FSL"""
     if estado.volumen is not None:
         _actualizar_corte_generico(context, 'AXIAL', context.scene.corte_axial)
         _actualizar_corte_generico(context, 'CORONAL', context.scene.corte_coronal)
@@ -233,7 +243,7 @@ def activar_visor():
             bpy.types.SpaceView3D.draw_handler_remove(
                 bpy.app.driver_namespace["hud_medico_handle"], 'WINDOW'
             )
-        except Exception:
+        except ValueError:
             pass
         from . import paneles_ui
         nuevo_handle = bpy.types.SpaceView3D.draw_handler_add(

@@ -47,8 +47,10 @@ class MEDVISION_OT_setup_slicer_view(bpy.types.Operator):
                 espacio.show_region_header = True
 
         if "hud_medico_handle" in bpy.app.driver_namespace:
-            try: bpy.types.SpaceView3D.draw_handler_remove(bpy.app.driver_namespace["hud_medico_handle"], 'WINDOW')
-            except: pass
+            try: 
+                bpy.types.SpaceView3D.draw_handler_remove(bpy.app.driver_namespace["hud_medico_handle"], 'WINDOW')
+            except ValueError: 
+                pass
 
         nuevo_handle = bpy.types.SpaceView3D.draw_handler_add(dibujar_nombres_medicos, (), 'WINDOW', 'POST_PIXEL')
         bpy.app.driver_namespace["hud_medico_handle"] = nuevo_handle
