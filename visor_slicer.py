@@ -2,28 +2,48 @@ import bpy
 import numpy as np
 import gpu
 from gpu_extras.batch import batch_for_shader
+import nibabel as nib
 
-# --- VARIABLES GLOBALES ---
-_volumen_global = None
-_volumen_pve_global = {}  # Ahora es un diccionario vacío por defecto
+class EstadoVisor:
+    #Clase para meter todo el estado en memoria del visor 
+    def __init__(self):
+        self.volumen = None
+        self.volumen_pve = {}
+        
+        self.lonchas = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+        self.lonchas_pve = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+        self.texturas = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+        self.texturas_pve = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+        
+        self.draw_handle = None
+        self.crosshair_active = False
+        self.img_rect = {
+            'AXIAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1},
+            'CORONAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1},
+            'SAGITAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1}
+        }
 
-_lonchas  = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
-_lonchas_pve = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
-_textures = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
-_textures_pve = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+    def limpiar(self):
+        """Libera la memoria de todos los arrays y texturas."""
+        if self.draw_handle is not None:
+            try:
+                bpy.types.SpaceView3D.draw_handler_remove(self.draw_handle, 'WINDOW')
+            except ValueError:
+                pass # Capturamos el error específico en lugar de un Exception genérico
+            self.draw_handle = None
+            
+        self.volumen = None
+        self.volumen_pve = {}
+        self.lonchas = {k: None for k in self.lonchas}
+        self.lonchas_pve = {k: None for k in self.lonchas_pve}
+        self.texturas = {k: None for k in self.texturas}
+        self.texturas_pve = {k: None for k in self.texturas_pve}
 
-_draw_handle = None
-_crosshair_pos = {'AXIAL': [0.5, 0.5], 'CORONAL': [0.5, 0.5], 'SAGITAL': [0.5, 0.5]}
-_crosshair_active = False
-_current_img_rect = {
-    'AXIAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1},
-    'CORONAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1},
-    'SAGITAL': {'x0': 0, 'y0': 0, 'pw': 1, 'ph': 1}
-}
+estado = EstadoVisor()
 
 def actualizar_tejido(self, context):
     """Fuerza la recarga de las 3 texturas al cambiar el menú de FSL"""
-    if _volumen_global is not None:
+    if estado.volumen is not None:
         _actualizar_corte_generico(context, 'AXIAL', context.scene.corte_axial)
         _actualizar_corte_generico(context, 'CORONAL', context.scene.corte_coronal)
         _actualizar_corte_generico(context, 'SAGITAL', context.scene.corte_sagital)
@@ -93,26 +113,24 @@ def _transformar_loncha(plano: str, loncha: np.ndarray) -> np.ndarray:
     return loncha
 
 def _actualizar_textura(plano: str, loncha_mri: np.ndarray, loncha_pve: np.ndarray = None, tejido: str = 'NONE'):
-    global _textures, _textures_pve
-    
-    # 1. TEXTURA MRI BASE
+
+     # 1. TEXTURA MRI BASE
     vmin, vmax = loncha_mri.min(), loncha_mri.max()
     datos = ((loncha_mri - vmin) / (vmax - vmin)).astype(np.float32) if vmax > vmin else np.zeros_like(loncha_mri, dtype=np.float32)
     h, w = datos.shape
     
     # MÁSCARA AISLANTE
     if tejido.startswith('SOLO_') and loncha_pve is not None:
-        # Si elegimos "Aislar", hacemos transparente todo lo que no tenga probabilidad de ser este tejido
         alfa_mri = (loncha_pve > 0.50).astype(np.float32)
     else:
-        # lo normal: todo es opaco excepto el fondo negro
         alfa_mri = (datos > 0.02).astype(np.float32)
  
     rgba_mri = np.stack([datos, datos, datos, alfa_mri], axis=-1)
     buf_mri = gpu.types.Buffer('FLOAT', h * w * 4, rgba_mri.flatten().tolist())
-    _textures[plano] = gpu.types.GPUTexture((w, h), format='RGBA32F', data=buf_mri)
+    
+    estado.texturas[plano] = gpu.types.GPUTexture((w, h), format='RGBA32F', data=buf_mri)
 
-    # 2. TEXTURA PVE (Capa superpuesta de colores)
+    # 2. TEXTURA PVE
     if loncha_pve is not None and tejido.startswith('PVE_'):
         r = np.ones_like(loncha_pve, dtype=np.float32)
         g = np.ones_like(loncha_pve, dtype=np.float32)
@@ -128,60 +146,54 @@ def _actualizar_textura(plano: str, loncha_mri: np.ndarray, loncha_pve: np.ndarr
         alfa_pve = np.clip(loncha_pve, 0.0, 1.0).astype(np.float32)
         rgba_pve = np.stack([r, g, b, alfa_pve], axis=-1)
         buf_pve = gpu.types.Buffer('FLOAT', h * w * 4, rgba_pve.flatten().tolist())
-        _textures_pve[plano] = gpu.types.GPUTexture((w, h), format='RGBA32F', data=buf_pve)
+        
+        estado.texturas_pve[plano] = gpu.types.GPUTexture((w, h), format='RGBA32F', data=buf_pve)
     else:
-        _textures_pve[plano] = None
+        estado.texturas_pve[plano] = None
 
 def guardar_volumen(volumen_np: np.ndarray, volumenes_pve_dict: dict = None):
-    global _volumen_global, _volumen_pve_global, _lonchas, _lonchas_pve
-
-    _volumen_global = volumen_np.astype(np.float32)
+    estado.volumen = volumen_np.astype(np.float32)
+    
     if volumenes_pve_dict:
-        _volumen_pve_global = {k: v.astype(np.float32) for k, v in volumenes_pve_dict.items()}
+        estado.volumen_pve = {k: v.astype(np.float32) for k, v in volumenes_pve_dict.items()}
     else:
-        _volumen_pve_global = {}
+        estado.volumen_pve = {}
 
     tejido = bpy.context.scene.tejido_visualizado
-    
-    # Convierte "SOLO_1" en "PVE_1" para buscarlo en diccionario
     clave_diccionario = tejido.replace('SOLO_', 'PVE_')
     
-    z_mid = volumen_np.shape[0] // 2
-    y_mid = volumen_np.shape[1] // 2
-    x_mid = volumen_np.shape[2] // 2
+    z_mid = estado.volumen.shape[0] // 2
+    y_mid = estado.volumen.shape[1] // 2
+    x_mid = estado.volumen.shape[2] // 2
 
     for plano, raw_mri in (
-        ('AXIAL',   volumen_np[z_mid, :, :]),
-        ('CORONAL', volumen_np[:, y_mid, :]),
-        ('SAGITAL', volumen_np[:, :, x_mid]),
+        ('AXIAL',   estado.volumen[z_mid, :, :]),
+        ('CORONAL', estado.volumen[:, y_mid, :]),
+        ('SAGITAL', estado.volumen[:, :, x_mid]),
     ):
         loncha_mri = _transformar_loncha(plano, raw_mri)
-        _lonchas[plano] = loncha_mri
+        estado.lonchas[plano] = loncha_mri
         
         loncha_pve = None
-        # Buscamos usando la clave traducida
-        if _volumen_pve_global and clave_diccionario in _volumen_pve_global and clave_diccionario != 'NONE':
-            matriz_tejido = _volumen_pve_global[clave_diccionario]
+        if estado.volumen_pve and clave_diccionario in estado.volumen_pve and clave_diccionario != 'NONE':
+            matriz_tejido = estado.volumen_pve[clave_diccionario]
             if plano == 'AXIAL': raw_pve = matriz_tejido[z_mid, :, :]
             elif plano == 'CORONAL': raw_pve = matriz_tejido[:, y_mid, :]
             elif plano == 'SAGITAL': raw_pve = matriz_tejido[:, :, x_mid]
             
             loncha_pve = _transformar_loncha(plano, raw_pve)
-            _lonchas_pve[plano] = loncha_pve
+            estado.lonchas_pve[plano] = loncha_pve
 
-        # A la textura se le pasa el 'tejido' original ('SOLO_1') para modo recorte
         _actualizar_textura(plano, loncha_mri, loncha_pve, tejido)
 
     activar_visor()
 
 def _actualizar_corte_generico(context, plano, profundidad):
-    global _volumen_global, _volumen_pve_global, _lonchas, _lonchas_pve
-    if _volumen_global is None: return
+    if estado.volumen is None: return
 
-    volumen_np = _volumen_global
+    volumen_np = estado.volumen
     tejido = context.scene.tejido_visualizado
     
-    # Convierte "SOLO_1" en "PVE_1"
     clave_diccionario = tejido.replace('SOLO_', 'PVE_')
     
     limites = {
@@ -196,24 +208,24 @@ def _actualizar_corte_generico(context, plano, profundidad):
         raw_pve = None
         if plano == 'AXIAL':
             raw_mri = volumen_np[profundidad, :, :]
-            if _volumen_pve_global and clave_diccionario in _volumen_pve_global and clave_diccionario != 'NONE':
-                raw_pve = _volumen_pve_global[clave_diccionario][profundidad, :, :]
+            if estado.volumen_pve and clave_diccionario in estado.volumen_pve and clave_diccionario != 'NONE':
+                raw_pve = estado.volumen_pve[clave_diccionario][profundidad, :, :]
         elif plano == 'CORONAL':
             raw_mri = volumen_np[:, profundidad, :]
-            if _volumen_pve_global and clave_diccionario in _volumen_pve_global and clave_diccionario != 'NONE':
-                raw_pve = _volumen_pve_global[clave_diccionario][:, profundidad, :]
+            if estado.volumen_pve and clave_diccionario in estado.volumen_pve and clave_diccionario != 'NONE':
+                raw_pve = estado.volumen_pve[clave_diccionario][:, profundidad, :]
         elif plano == 'SAGITAL':
             raw_mri = volumen_np[:, :, profundidad]
-            if _volumen_pve_global and clave_diccionario in _volumen_pve_global and clave_diccionario != 'NONE':
-                raw_pve = _volumen_pve_global[clave_diccionario][:, :, profundidad]
+            if estado.volumen_pve and clave_diccionario in estado.volumen_pve and clave_diccionario != 'NONE':
+                raw_pve = estado.volumen_pve[clave_diccionario][:, :, profundidad]
         else: return
     except IndexError: return
 
     loncha_mri = _transformar_loncha(plano, raw_mri)
-    _lonchas[plano] = loncha_mri
+    estado.lonchas[plano] = loncha_mri
     
     loncha_pve = _transformar_loncha(plano, raw_pve) if raw_pve is not None else None
-    _lonchas_pve[plano] = loncha_pve
+    estado.lonchas_pve[plano] = loncha_pve
 
     _actualizar_textura(plano, loncha_mri, loncha_pve, tejido)
 
@@ -240,9 +252,8 @@ def actualizar_corte_sagital(self, context):
 
 def activar_visor():
     """Registra el draw handler y re-registra el HUD de texto encima."""
-    global _draw_handle
-    if _draw_handle is None:
-        _draw_handle = bpy.types.SpaceView3D.draw_handler_add(
+    if estado.draw_handle is None:
+        estado.draw_handle = bpy.types.SpaceView3D.draw_handler_add(
             _dibujar_slice, (), 'WINDOW', 'POST_PIXEL'
         )
 
@@ -261,8 +272,6 @@ def activar_visor():
 
 
 def _dibujar_slice():
-    global _textures, _lonchas, _crosshair_pos, _crosshair_active
-
     ctx = bpy.context
     if not ctx.area or ctx.area.type != 'VIEW_3D':
         return
@@ -298,10 +307,12 @@ def _dibujar_slice():
     batch_bg.draw(shader_bg)
 
     # 2. Imagen 2D
-    tex    = _textures[view_type]
-    loncha = _lonchas[view_type]
+    tex    = estado.texturas[view_type]
+    loncha = estado.lonchas[view_type]
     if tex is None or loncha is None:
         return
+
+    h_img, w_img = loncha.shape
 
     h_img, w_img = loncha.shape
     ratio = w_img / h_img if h_img > 0 else 1.0
@@ -336,7 +347,7 @@ def _dibujar_slice():
     x1 = x0 + pw
     y1 = y0 + ph
 
-    _current_img_rect[view_type] = {'x0': x0, 'y0': y0, 'pw': pw, 'ph': ph}
+    estado.current_img_rect[view_type] = {'x0': x0, 'y0': y0, 'pw': pw, 'ph': ph}
 
     try:
         shader_img = gpu.shader.from_builtin('IMAGE')
@@ -360,14 +371,14 @@ def _dibujar_slice():
     batch_img.draw(shader_img)
     
     # --- PASADA 2: Dibujar Segmentación (PVE) por encima ---
-    tex_pve = _textures_pve[view_type]
+    tex_pve = estado.textures_pve[view_type]
     if tex_pve is not None:
         shader_img.uniform_sampler("image", tex_pve)
         batch_img.draw(shader_img)
 
     gpu.state.blend_set('NONE')
 
-    if _crosshair_active:
+    if estado.crosshair_active:
         vol_shape = ctx.scene.get("medvisor_volumen_shape", [256, 256, 256])
         
         c_ax = ctx.scene.corte_axial
@@ -415,17 +426,4 @@ def _dibujar_slice():
         batch_line.draw(shader_line)
 
 def unregister():
-    global _volumen_global, _volumen_pve_global, _lonchas, _lonchas_pve, _textures, _textures_pve, _draw_handle
-    if _draw_handle is not None:
-        try:
-            bpy.types.SpaceView3D.draw_handler_remove(_draw_handle, 'WINDOW')
-        except Exception:
-            pass
-        _draw_handle = None
-        
-    _volumen_global = None
-    _volumen_pve_global = {}
-    _lonchas  = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
-    _lonchas_pve = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
-    _textures = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
-    _textures_pve = {'AXIAL': None, 'CORONAL': None, 'SAGITAL': None}
+    estado.limpiar()
