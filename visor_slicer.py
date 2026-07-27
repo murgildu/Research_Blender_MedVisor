@@ -2,7 +2,6 @@ import bpy
 import numpy as np
 import gpu
 from gpu_extras.batch import batch_for_shader
-import nibabel as nib
 
 class EstadoVisor:
     #Clase para meter todo el estado en memoria del visor 
@@ -47,34 +46,6 @@ def actualizar_tejido(self, context):
         _actualizar_corte_generico(context, 'AXIAL', context.scene.corte_axial)
         _actualizar_corte_generico(context, 'CORONAL', context.scene.corte_coronal)
         _actualizar_corte_generico(context, 'SAGITAL', context.scene.corte_sagital)
-
-def generar_textura_rgba(ruta_mri, ruta_pve, corte_idx, plano='AXIAL'):
-    # 1. Cargar datos
-    img_mri = nib.load(ruta_mri).get_fdata()
-    img_pve = nib.load(ruta_pve).get_fdata() # Tu archivo fsl_seg_pve_1.nii.gz
-    
-    # 2. Extraer el corte (asumiendo formato AXIAL para el ejemplo)
-    corte_mri = img_mri[:, :, corte_idx]
-    corte_pve = img_pve[:, :, corte_idx]
-    
-    # 3. Normalizar la MRI original a [0.0, 1.0]
-    corte_mri = (corte_mri - corte_mri.min()) / (corte_mri.max() - corte_mri.min())
-    
-    # 4. Crear arreglo RGBA
-    # MRI original en RGB, y el valor PVE directamente en el canal Alpha
-    filas, columnas = corte_mri.shape
-    rgba = np.zeros((filas, columnas, 4), dtype=np.float32)
-    
-    # Capa base (MRI) en los 3 primeros canales
-    rgba[..., 0] = corte_mri # R
-    rgba[..., 1] = corte_mri # G
-    rgba[..., 2] = corte_mri # B
-    
-    # Capa segmentación: Asignamos el valor PVE (0.0 a 1.0) al Canal Alfa
-    # Esto hará que el tejido sea más o menos opaco según la probabilidad de FAST
-    rgba[..., 3] = corte_pve 
-    
-    return rgba
 
 def _detectar_vista(rv3d):
     if rv3d is None:
@@ -281,7 +252,7 @@ def _dibujar_slice():
 
     view_type = _detectar_vista(rv3d)
     if view_type is None:
-        return  # Vista perspectiva: no pintar
+        return
 
     region = ctx.region
     rw, rh = region.width, region.height
@@ -347,7 +318,7 @@ def _dibujar_slice():
     x1 = x0 + pw
     y1 = y0 + ph
 
-    estado.current_img_rect[view_type] = {'x0': x0, 'y0': y0, 'pw': pw, 'ph': ph}
+    estado.img_rect[view_type] = {'x0': x0, 'y0': y0, 'pw': pw, 'ph': ph}
 
     try:
         shader_img = gpu.shader.from_builtin('IMAGE')
@@ -371,7 +342,7 @@ def _dibujar_slice():
     batch_img.draw(shader_img)
     
     # --- PASADA 2: Dibujar Segmentación (PVE) por encima ---
-    tex_pve = estado.textures_pve[view_type]
+    tex_pve = estado.texturas_pve[view_type]
     if tex_pve is not None:
         shader_img.uniform_sampler("image", tex_pve)
         batch_img.draw(shader_img)
