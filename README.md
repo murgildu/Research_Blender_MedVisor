@@ -84,7 +84,7 @@ hdbet = C:\Ruta\A\Tu\Python\Scripts\hd-bet.exe
 Procesa un archivo o una carpeta entera de resonancias, calculando volúmenes absolutos (GM/WM/CSF vía FSL FAST) y, opcionalmente, el volumen normalizado (SIENAX):
 
 ```bash
-python headless.py -o ./salida -c config.ini transversal -i ./carpeta_con_resonancias --sienax
+python headless.py -o ./salida -c config.ini t -i ./carpeta_con_resonancias --sienax
 ```
 
 - `-i` acepta tanto un único archivo `.nii.gz` como una carpeta con varios.
@@ -96,10 +96,10 @@ python headless.py -o ./salida -c config.ini transversal -i ./carpeta_con_resona
 Compara dos resonancias del mismo paciente en fechas distintas para medir atrofia cerebral (SIENA):
 
 ```bash
-python headless.py -o ./salida -c config.ini longitudinal --basal ./sub-0050_ses-01_T1w.nii.gz --seguimiento ./sub-0050_ses-02_T1w.nii.gz
+python headless.py -o ./salida -c config.ini l --a ./sub-0050_ses-01_T1w.nii.gz --r ./sub-0050_ses-02_T1w.nii.gz
 ```
 
-- `--basal` es la resonancia de la sesión más antigua; `--seguimiento`, la más reciente.
+- `--a` es la resonancia de la sesión más antigua; `--r`, la más reciente.
 - El resultado principal es el **PBVC** (Porcentaje de Cambio de Volumen Cerebral): SIENA coregistra ambas imágenes y mide el desplazamiento físico de los contornos cerebrales entre ambas fechas, en vez de restar dos volúmenes absolutos calculados por separado — esto evita arrastrar el ruido estocástico propio de FAST (ver nota técnica más abajo).
 
 ### Informe generado
