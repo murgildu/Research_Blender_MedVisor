@@ -17,21 +17,16 @@ def construir_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="modo", required=True)
 
-    p_transversal = subparsers.add_parser(
-        "t", help="Analiza una resonancia en un solo momento"
-    )
-    p_transversal.add_argument("-i", "--input", required=True,
-                                help="Archivo .nii.gz o carpeta con varios")
-    p_transversal.add_argument("--sienax", action="store_true",
-                                help="Además de FAST, ejecuta SIENAX")
+    # Modo Transversal
+    p_transversal = subparsers.add_parser("t", help="Analiza una resonancia en un solo momento")
+    p_transversal.add_argument("-i", "--input", required=True, help="Archivo .nii.gz o carpeta con varios")
+    p_transversal.add_argument("--sienax", action="store_true", help="Además de FAST, ejecuta SIENAX")
+    p_transversal.add_argument("--zscores", action="store_true", help="Calcula Z-Scores comparando con ADNI")
 
-    p_longitudinal = subparsers.add_parser(
-        "l", help="Compara dos sesiones del mismo paciente con SIENA"
-    )
-    p_longitudinal.add_argument("--a", dest="basal", required=True,
-                                 help="Resonancia de la sesión más Antigua")
-    p_longitudinal.add_argument("--r", dest="seguimiento", required=True,
-                                 help="Resonancia de la sesión más Reciente")
+    # Modo Longitudinal
+    p_longitudinal = subparsers.add_parser("l", help="Compara dos sesiones del mismo paciente con SIENA")
+    p_longitudinal.add_argument("--a", dest="basal", required=True, help="Resonancia de la sesión más Antigua")
+    p_longitudinal.add_argument("--r", dest="seguimiento", required=True, help="Resonancia de la sesión más Reciente")
 
     return parser
 
@@ -50,31 +45,31 @@ def main():
         return
 
     ruta_hdbet = config['Rutas'].get('hdbet', 'hd-bet')
-
     output_dir = args.output
     os.makedirs(output_dir, exist_ok=True)
 
     # 1. FASE DE PROCESAMIENTO DE IMAGEN (HD-BET + FSL)
     if args.modo == "t":
         resultados = procesar_transversal(args, ruta_hdbet, output_dir)
+        
+        # 2. FASE ESTADÍSTICA: Controlada por flag exclusivamente en transversal
+        if args.zscores and resultados:
+            print("\n[Z-Scores] Comparando resultados del paciente con la base de datos ADNI...")
+            ruta_sanos = "data/cohorte_sanos_referencia.csv"
+            ruta_freesurfer = "data/UCSFFSX7_06Oct2026.csv"
+            
+            if os.path.exists(ruta_sanos) and os.path.exists(ruta_freesurfer):
+                motor = StatsEngine(ruta_sanos, ruta_freesurfer)
+                resultados = motor.evaluar_diccionarios_paciente(resultados)
+            else:
+                print("[AVISO] Faltan los CSV en 'data/'. Saltando el cálculo de Z-Scores.")
+                
     else:
         resultados = procesar_longitudinal(args, output_dir)
 
     if not resultados:
         print("No se generaron resultados en esta ejecución.")
         return
-
-    # 2. FASE ESTADÍSTICA: Evaluación contra la cohorte de ADNI
-    print("\n[Z-Scores] Comparando resultados del paciente con la base de datos ADNI...")
-    ruta_sanos = "data/cohorte_sanos_referencia.csv"
-    ruta_freesurfer = "data/UCSFFSX7_06Oct2026.csv"
-    
-    if os.path.exists(ruta_sanos) and os.path.exists(ruta_freesurfer):
-        motor = StatsEngine(ruta_sanos, ruta_freesurfer)
-        # Evaluamos y añadimos los cálculos estadísticos a la lista de resultados
-        resultados = motor.evaluar_diccionarios_paciente(resultados)
-    else:
-        print("[AVISO] Faltan los CSV en 'data/'. Saltando el cálculo de Z-Scores.")
 
     # 3. FASE DE INFORMES
     ruta_informe_json = os.path.join(output_dir, "informe_volumetrico_medvision.json")

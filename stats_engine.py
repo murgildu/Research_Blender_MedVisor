@@ -67,25 +67,57 @@ class StatsEngine:
                     print(f"   [!] ANOMALÍA en [{reg}] -> Volumen: {val_paciente:.1f} | Media Sana: {media:.1f} | Z-Score: {z:.2f}")
             
             print(f"-> Evaluación final para {id_paciente}: {anomalias_detectadas} regiones con desviación significativa (|Z| > 2.0).\n")
-            
+
     def evaluar_diccionarios_paciente(self, lista_resultados_fsl):
         """
         Recibe la lista de diccionarios generada por core_neuro.py,
-        calcula los Z-Scores y se los añade al propio diccionario.
+        calcula los Z-Scores basándose en la cohorte sana y los añade al diccionario.
         """
         if self.df_referencia is None:
             self.preparar_motor()
             
-        # (Aquí luego mapearemos qué métrica exacta de FSL FAST/SIENAX
-        #  corresponde a qué columna de FreeSurfer, por ejemplo el Volumen Total)
+        # Mapeo de métricas obtenidas por FSL FAST a las columnas FreeSurfer de ADNI
+        mapeo_columnas = {
+            "materia_gris": "ST154SV",
+            "materia_blanca": "ST152SV",
+            "liquido_cefalorraquideo": "ST7SV",
+            "volumen_intracraneal_total": "ST10CV"
+        }
 
         for resultado in lista_resultados_fsl:
-            # Ejemplo: Imagina que core_neuro guardó el volumen en resultado['vol_materia_gris']
-            print(f" -> Evaluando estadísticamente el sujeto: {resultado.get('id_sujeto', 'Desconocido')}")
+            # Los z-scores volumétricos solo aplican a los análisis transversales
+            if resultado.get("tipo") != "transversal":
+                continue
+                
+            print(f" -> Evaluando estadísticamente el sujeto: {resultado.get('paciente', 'Desconocido')}")
             
-            # Aquí añadiremos la lógica matemática para meter el Z-score
-            # resultado['z_score_materia_gris'] = ...
-            resultado['analisis_zscore'] = "Completado" # Placeholder para probar que funciona
+            volumenes_paciente = resultado.get("volumenes_absolutos_mm3", {})
+            z_scores_calculados = {}
+            anomalias_detectadas = 0
+            
+            for clave_fast, columna_adni in mapeo_columnas.items():
+                val_paciente = volumenes_paciente.get(clave_fast)
+                
+                if val_paciente is not None:
+                    # Extraer la distribución normal de la cohorte sana para este tejido
+                    sanos_reg = self.df_referencia[columna_adni].dropna()
+                    
+                    if not sanos_reg.empty:
+                        media = np.mean(sanos_reg)
+                        sigma = np.std(sanos_reg, ddof=1)
+                        
+                        if sigma > 0:
+                            z = (val_paciente - media) / sigma
+                            z_scores_calculados[f"z_score_{clave_fast}"] = round(z, 2)
+                            
+                            # Notificar si sobrepasa tu umbral estadístico (|Z| > 2.0)
+                            if abs(z) > 2.0:
+                                anomalias_detectadas += 1
+                                print(f"   [!] ANOMALÍA en [{clave_fast}] -> Paciente: {val_paciente:.1f} | Media: {media:.1f} | Z-Score: {z:.2f}")
+
+            # Guardamos los cálculos en el diccionario que irá al JSON y al HTML
+            resultado["z_scores"] = z_scores_calculados
+            resultado["anomalias_zscore_detectadas"] = anomalias_detectadas
             
         return lista_resultados_fsl
 

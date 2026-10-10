@@ -32,7 +32,9 @@ def fusionar_resultado(informe: dict, resultado: dict):
             "fecha_adquisicion": resultado["fecha"],
             "archivo_original": resultado["archivo_original"],
             "volumenes_absolutos_mm3": resultado["volumenes_absolutos_mm3"],
-            "volumenes_sienax_normalizados": resultado["volumenes_sienax_normalizados"],
+            "volumenes_sienax_normalizados": resultado.get("volumenes_sienax_normalizados", {}),
+            "z_scores_adni": resultado.get("z_scores", {}),
+            "anomalias_detectadas": resultado.get("anomalias_zscore_detectadas", 0)
         }
     else: 
         clave = f"{resultado['sesion_basal']}_vs_{resultado['sesion_seguimiento']}"
@@ -73,6 +75,12 @@ def generar_html(resultados, ruta_informe_html):
             th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
             th {{ background-color: #34495e; color: white; }}
             tr:hover {{ background-color: #f5f5f5; }}
+            
+            /* Estilos para alertas Z-Score */
+            .alert-z {{ color: #c0392b; font-weight: bold; background-color: #fadbd8; padding: 3px 8px; border-radius: 4px; display: inline-block; border: 1px solid #e74c3c; }}
+            .normal-z {{ color: #27ae60; font-weight: bold; }}
+            .anomaly-warning {{ background-color: #fdf2e9; border-left: 5px solid #e67e22; padding: 10px 15px; margin-bottom: 20px; border-radius: 4px; }}
+            
             .qa-section {{ margin-top: 40px; }}
             .qa-card {{ display: flex; flex-direction: column; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 25px; overflow: hidden; }}
             .qa-header {{ background: #2c3e50; color: white; padding: 10px 15px; margin: 0; font-size: 16px; }}
@@ -91,13 +99,28 @@ def generar_html(resultados, ruta_informe_html):
             <h1>Informe Volumétrico MedVision</h1>
     """
 
+    def formatear_zscore(valor):
+        if valor is None or valor == "N/A":
+            return "N/A"
+        try:
+            val_float = float(valor)
+            if abs(val_float) > 2.0:
+                return f'<span class="alert-z">{val_float:.2f} ⚠️</span>'
+            else:
+                return f'<span class="normal-z">{val_float:.2f}</span>'
+        except:
+            return "N/A"
+
     for res in resultados:
         paciente = res.get("paciente", "Desconocido")
         sesion = res.get("sesion", "Desconocida")
         tipo = res.get("tipo", "transversal")
         archivo_orig = res.get("archivo_original", "N/A")
+        
         v_abs = res.get("volumenes_absolutos_mm3", {})
         v_norm = res.get("volumenes_sienax_normalizados", {})
+        z_scores = res.get("z_scores", {})
+        anomalias = res.get("anomalias_zscore_detectadas", 0)
         imgs = res.get("imagenes_fsl", {})
 
         html_content += f"""
@@ -114,41 +137,57 @@ def generar_html(resultados, ruta_informe_html):
                     <p>Fecha Reporte: <span>{datetime.now().strftime('%Y-%m-%d %H:%M')}</span></p>
                 </div>
             </div>
+        """
+
+        if anomalias > 0:
+            html_content += f"""
+            <div class="anomaly-warning">
+                <strong>⚠️ Alerta Clínica:</strong> Se han detectado <strong>{anomalias}</strong> anomalías volumétricas (|Z-Score| > 2.0) en comparación con la cohorte sana de referencia (ADNI).
+            </div>
+            """
+
+        html_content += f"""
             <h2>Cuantificación Tisular</h2>
             <table>
                 <tr>
                     <th>Tejido Anatómico</th>
                     <th>Volumen Absoluto (mm³)</th>
                     <th>Volumen Normalizado (mm³) *</th>
+                    <th>Z-Score (vs. Sanos ADNI) **</th>
                 </tr>
                 <tr>
                     <td>Materia Gris (GM)</td>
                     <td>{v_abs.get("materia_gris", "N/A")}</td>
                     <td>{v_norm.get("materia_gris_normalizada", "N/A") if v_norm else "N/A"}</td>
+                    <td>{formatear_zscore(z_scores.get("z_score_materia_gris", "N/A"))}</td>
                 </tr>
                 <tr>
                     <td>Materia Blanca (WM)</td>
                     <td>{v_abs.get("materia_blanca", "N/A")}</td>
                     <td>{v_norm.get("materia_blanca_normalizada", "N/A") if v_norm else "N/A"}</td>
+                    <td>{formatear_zscore(z_scores.get("z_score_materia_blanca", "N/A"))}</td>
                 </tr>
                 <tr>
                     <td>Líquido Cefalorraquídeo (CSF)</td>
                     <td>{v_abs.get("liquido_cefalorraquideo", "N/A")}</td>
                     <td>N/A</td>
+                    <td>{formatear_zscore(z_scores.get("z_score_liquido_cefalorraquideo", "N/A"))}</td>
                 </tr>
                 <tr style="font-weight: bold; background-color: #e8f4f8;">
                     <td>Volumen Cerebral Total (TBV)</td>
                     <td>{v_abs.get("volumen_intracraneal_total", "N/A")}</td>
                     <td>{v_norm.get("volumen_cerebral_total_normalizado", "N/A") if v_norm else "N/A"}</td>
+                    <td>{formatear_zscore(z_scores.get("z_score_volumen_intracraneal_total", "N/A"))}</td>
                 </tr>
             </table>
         """
         
-        if v_norm:
-            v_scale = v_norm.get("v_scale", "N/A")
+        if v_norm or z_scores:
+            v_scale = v_norm.get("v_scale", "N/A") if v_norm else "N/A"
             html_content += f"""
             <p style="font-size: 12px; color: #7f8c8d; margin-top: -20px; margin-bottom: 30px;">
-                * La normalización se estima multiplicando el volumen absoluto por el Factor de Escala de SIENAX (v_scale: {v_scale}).
+                * La normalización se estima multiplicando el volumen absoluto por el Factor de Escala de SIENAX (v_scale: {v_scale}).<br>
+                ** Z-Score calculado usando la fórmula z = (x - μ) / σ frente a población de referencia sana. Valores > 2.0 o < -2.0 indican desviación clínica significativa.
             </p>
             """
 
@@ -167,7 +206,7 @@ def generar_html(resultados, ruta_informe_html):
         for img_name, info in descripciones_qa.items():
             if img_name in imgs:
                 titulo, descripcion, img_class = info
-                img_data = imgs[img_name]
+                img_data = _imagen_a_base64(imgs[img_name])
                 style_body = ' style="flex-direction: column; align-items: flex-start;"' if img_class == "qa-image-full" else ''
                 html_content += f"""
                 <div class="qa-card">
