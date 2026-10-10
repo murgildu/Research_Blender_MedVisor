@@ -7,6 +7,8 @@ from config_manager import cargar_configuracion
 from core_neuro import procesar_transversal, procesar_longitudinal
 from data_reports import cargar_o_crear_informe, fusionar_resultado, guardar_json, generar_html
 
+# Importación del Motor Estadístico (Z-Scores)
+from stats_engine import StatsEngine
 
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Pipeline Headless MedVision")
@@ -52,6 +54,7 @@ def main():
     output_dir = args.output
     os.makedirs(output_dir, exist_ok=True)
 
+    # 1. FASE DE PROCESAMIENTO DE IMAGEN (HD-BET + FSL)
     if args.modo == "t":
         resultados = procesar_transversal(args, ruta_hdbet, output_dir)
     else:
@@ -61,6 +64,19 @@ def main():
         print("No se generaron resultados en esta ejecución.")
         return
 
+    # 2. FASE ESTADÍSTICA: Evaluación contra la cohorte de ADNI
+    print("\n[Z-Scores] Comparando resultados del paciente con la base de datos ADNI...")
+    ruta_sanos = "data/cohorte_sanos_referencia.csv"
+    ruta_freesurfer = "data/UCSFFSX7_06Oct2026.csv"
+    
+    if os.path.exists(ruta_sanos) and os.path.exists(ruta_freesurfer):
+        motor = StatsEngine(ruta_sanos, ruta_freesurfer)
+        # Evaluamos y añadimos los cálculos estadísticos a la lista de resultados
+        resultados = motor.evaluar_diccionarios_paciente(resultados)
+    else:
+        print("[AVISO] Faltan los CSV en 'data/'. Saltando el cálculo de Z-Scores.")
+
+    # 3. FASE DE INFORMES
     ruta_informe_json = os.path.join(output_dir, "informe_volumetrico_medvision.json")
     informe = cargar_o_crear_informe(ruta_informe_json)
     
@@ -73,7 +89,7 @@ def main():
     )
     generar_html(resultados, ruta_informe_html)
 
-    print("=== PROCESO FINALIZADO ===")
+    print("\n=== PROCESO FINALIZADO ===")
     print(f"JSON actualizado: {ruta_informe_json}")
     print(f"HTML generado:    {ruta_informe_html}")
 
