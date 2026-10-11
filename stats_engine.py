@@ -1,135 +1,139 @@
 import pandas as pd
 import numpy as np
 
+from construir_referencia import clave_sujeto, sienax_fiable, corregir_sienax
+
+UMBRAL_Z = 2.0
+MIN_SUJETOS_SUBGRUPO = 30
+VENTANA_EDAD = 5  # años
+
+# Métricas que se evalúan. Los nombres coinciden con las claves del resultado de core_neuro.py
+# y con las columnas del CSV de referencia (que genera construir_referencia.py).
+METRICAS_ABSOLUTAS = [
+    "materia_gris", "materia_blanca", "liquido_cefalorraquideo", "volumen_intracraneal_total",
+]
+# Normalizadas por SIENAX (ya corregidas por tamaño de cabeza)
+METRICAS_NORMALIZADAS = [
+    "materia_gris_normalizada", "materia_blanca_normalizada", "volumen_cerebral_total_normalizado",
+]
+
+
+def cargar_demografia_pacientes(ruta_csv: str) -> dict:
+    """
+    CSV opcional con columnas: paciente, edad, sexo (M/F).
+    'paciente' debe coincidir con el sujeto BIDS (p. ej. sub-0050).
+    Devuelve {paciente: {"edad": float, "sexo": "M"|"F"|None}}.
+    """
+    df = pd.read_csv(ruta_csv)
+    datos = {}
+    for _, fila in df.iterrows():
+        sexo = str(fila.get("sexo", "")).strip().upper()
+        datos[str(fila["paciente"])] = {
+            "edad": float(fila["edad"]) if pd.notna(fila.get("edad")) else None,
+            "sexo": "M" if sexo in ("M", "H", "1", "HOMBRE") else "F" if sexo in ("F", "MUJER", "2") else None,
+        }
+    return datos
+
+
 class StatsEngine:
-    def __init__(self, ruta_sanos, ruta_volumenes_freesurfer):
+    """
+    Z-scores frente a una referencia sana procesada con el MISMO pipeline
+    (HD-BET + FAST + SIENAX), así que las medidas son directamente comparables.
+    """
+
+    def __init__(self, ruta_referencia, datos_pacientes=None):
         print("==================================================")
         print("   MedVision - Motor Estadístico Headless (Z-Scores)")
         print("==================================================\n")
-        
-        self.ruta_sanos = ruta_sanos
-        self.ruta_volumenes = ruta_volumenes_freesurfer
+        self.ruta_referencia = ruta_referencia
+        self.datos_pacientes = datos_pacientes or {}
         self.df_referencia = None
-        
+
     def preparar_motor(self):
-        df_sanos = pd.read_csv(self.ruta_sanos, low_memory=False)
-        df_vol = pd.read_csv(self.ruta_volumenes, low_memory=False)
-        
-        col_sanos = 'PTID' if 'PTID' in df_sanos.columns else 'Subject ID'
-        col_vol = 'PTID' if 'PTID' in df_vol.columns else ('Subject ID' if 'Subject ID' in df_vol.columns else 'RID')
-        
-        self.df_referencia = pd.merge(df_sanos, df_vol, left_on=col_sanos, right_on=col_vol, how='inner')
-        print(f"-> Cohorte de referencia sana cargada: {len(self.df_referencia)} sujetos.\n")
+        df = pd.read_csv(self.ruta_referencia, low_memory=False)
+        n_sesiones = len(df)
+        # Acepta M/F y también CSV antiguos con 1/2
+        df["sexo"] = df["sexo"].map({"M": "M", "F": "F", 1: "M", 2: "F", "1": "M", "2": "F"})
+
+        # Un solo escaneo por sujeto (la primera sesión), para que nadie pese más que otro
+        df = df.dropna(subset=["materia_gris"])
+        df = df.sort_values(["clave", "sesion"]).drop_duplicates("clave", keep="first").copy()
+
+        self.df_referencia = df
+        print(f"-> Referencia propia cargada: {len(df)} sujetos únicos ({n_sesiones} sesiones en el CSV).")
+        if len(df) < MIN_SUJETOS_SUBGRUPO:
+            print(f"   [AVISO] Con menos de {MIN_SUJETOS_SUBGRUPO} sujetos los Z-Scores son poco fiables.")
+        print()
         return self.df_referencia
 
-    def evaluar_cerebros(self, df_pacientes):
-        """
-        Recibe uno o varios cerebros procesados, calcula los Z-Scores para todas
-        las regiones anatómicas (ST...SV) frente a la cohorte sana y detecta anomalías.
-        """
-        if self.df_referencia is None:
-            self.preparar_motor()
-            
-        # Identificar todas las columnas de volumen subcortical/cortical disponibles ('ST...')
-        columnas_regiones = [c for c in self.df_referencia.columns if c.startswith('ST') and c.endswith('SV')]
-        
-        informes_globales = []
-        
-        for idx, paciente in df_pacientes.iterrows():
-            id_paciente = paciente.get('PTID', paciente.get('Subject ID', f'Paciente_{idx}'))
-            print(f"==================================================")
-            print(f" Evaluando cerebro / paciente: {id_paciente}")
-            print(f"==================================================")
-            
-            anomalias_detectadas = 0
-            
-            for reg in columnas_regiones:
-                # Datos de la cohorte sana para esta región específica
-                sanos_reg = self.df_referencia[reg].dropna()
-                if len(sanos_reg) == 0:
-                    continue
-                
-                media = np.mean(sanos_reg)
-                sigma = np.std(sanos_reg, ddof=1)
-                
-                # Valor del cerebro a evaluar
-                val_paciente = paciente.get(reg, np.nan)
-                if pd.isna(val_paciente) or sigma == 0:
-                    continue
-                
-                # Cálculo del Z-Score
-                z = (val_paciente - media) / sigma
-                
-                # Criterio de anomalía estadística (ej: Z < -2.0 atrofia o Z > 2.0 inflamación/agrandamiento)
-                es_anomalo = abs(z) > 2.0
-                if es_anomalo:
-                    anomalias_detectadas += 1
-                    print(f"   [!] ANOMALÍA en [{reg}] -> Volumen: {val_paciente:.1f} | Media Sana: {media:.1f} | Z-Score: {z:.2f}")
-            
-            print(f"-> Evaluación final para {id_paciente}: {anomalias_detectadas} regiones con desviación significativa (|Z| > 2.0).\n")
+    def _subgrupo(self, referencia, edad, sexo):
+        """Mismo sexo y edad ±VENTANA_EDAD. Si queda muy pequeño, se usa la referencia entera."""
+        if sexo in ("M", "F") and edad is not None:
+            sub = referencia[(referencia["sexo"] == sexo) & ((referencia["edad"] - edad).abs() <= VENTANA_EDAD)]
+            if len(sub) >= MIN_SUJETOS_SUBGRUPO:
+                return sub, f"mismo sexo y edad {edad:.0f}±{VENTANA_EDAD} años"
+            print(f"   [AVISO] Solo {len(sub)} sanos comparables (sexo/edad); se usa la referencia completa.")
+        else:
+            print("   [AVISO] Sin edad/sexo del paciente: se compara con la referencia completa.")
+        return referencia, "referencia completa"
 
     def evaluar_diccionarios_paciente(self, lista_resultados_fsl):
         """
-        Recibe la lista de diccionarios generada por core_neuro.py,
-        calcula los Z-Scores basándose en la cohorte sana y los añade al diccionario.
+        Recibe la lista de diccionarios de core_neuro.py y añade:
+          - z_scores: un Z por métrica (absolutas y, si hay SIENAX, normalizadas)
+          - anomalias_zscore_detectadas: cuántas superan |Z| > UMBRAL_Z
+          - referencia_zscore: con cuántos sanos y con qué criterio se comparó
         """
         if self.df_referencia is None:
             self.preparar_motor()
-            
-        # Mapeo de métricas obtenidas por FSL FAST a las columnas FreeSurfer de ADNI
-        mapeo_columnas = {
-            "materia_gris": "ST154SV",
-            "materia_blanca": "ST152SV",
-            "liquido_cefalorraquideo": "ST7SV",
-            "volumen_intracraneal_total": "ST10CV"
-        }
 
         for resultado in lista_resultados_fsl:
-            # Los z-scores volumétricos solo aplican a los análisis transversales
             if resultado.get("tipo") != "transversal":
                 continue
-                
-            print(f" -> Evaluando estadísticamente el sujeto: {resultado.get('paciente', 'Desconocido')}")
-            
-            volumenes_paciente = resultado.get("volumenes_absolutos_mm3", {})
-            z_scores_calculados = {}
-            anomalias_detectadas = 0
-            
-            for clave_fast, columna_adni in mapeo_columnas.items():
-                val_paciente = volumenes_paciente.get(clave_fast)
-                
-                if val_paciente is not None:
-                    # Extraer la distribución normal de la cohorte sana para este tejido
-                    sanos_reg = self.df_referencia[columna_adni].dropna()
-                    
-                    if not sanos_reg.empty:
-                        media = np.mean(sanos_reg)
-                        sigma = np.std(sanos_reg, ddof=1)
-                        
-                        if sigma > 0:
-                            z = (val_paciente - media) / sigma
-                            z_scores_calculados[f"z_score_{clave_fast}"] = round(z, 2)
-                            
-                            # Notificar si sobrepasa tu umbral estadístico (|Z| > 2.0)
-                            if abs(z) > 2.0:
-                                anomalias_detectadas += 1
-                                print(f"   [!] ANOMALÍA en [{clave_fast}] -> Paciente: {val_paciente:.1f} | Media: {media:.1f} | Z-Score: {z:.2f}")
 
-            # Guardamos los cálculos en el diccionario que irá al JSON y al HTML
-            resultado["z_scores"] = z_scores_calculados
-            resultado["anomalias_zscore_detectadas"] = anomalias_detectadas
-            
+            sujeto = resultado.get("paciente", "Desconocido")
+            print(f" -> Evaluando estadísticamente el sujeto: {sujeto}")
+
+            # Si este mismo sujeto está en la referencia, se excluye para no compararlo consigo mismo
+            referencia = self.df_referencia[self.df_referencia["clave"] != clave_sujeto(sujeto)]
+            demo = self.datos_pacientes.get(sujeto, {})
+            referencia, criterio = self._subgrupo(referencia, demo.get("edad"), demo.get("sexo"))
+
+            valores = {}
+            vol_fast = resultado.get("volumenes_absolutos_mm3") or {}
+            valores.update(vol_fast)
+            sienax = corregir_sienax(resultado.get("volumenes_sienax_normalizados") or {})
+            fast_total = (vol_fast.get("materia_gris") or 0) + (vol_fast.get("materia_blanca") or 0)
+            if sienax_fiable(sienax, fast_total):
+                valores.update(sienax)
+            elif sienax:
+                print(f"   [AVISO] SIENAX no es fiable para este cerebro (v_scale={sienax.get('v_scale')}, "
+                      f"opciones_bet={sienax.get('opciones_bet')}): se omiten los Z-Scores normalizados "
+                      f"y se usan solo los de FAST.")
+
+            z_scores = {}
+            anomalias = 0
+            for metrica in METRICAS_ABSOLUTAS + METRICAS_NORMALIZADAS:
+                val = valores.get(metrica)
+                if val is None or metrica not in referencia.columns:
+                    continue
+                sanos = referencia[metrica].dropna()
+                if len(sanos) < 2:
+                    continue
+                media = np.mean(sanos)
+                sigma = np.std(sanos, ddof=1)
+                if sigma <= 0:
+                    continue
+
+                z = (val - media) / sigma
+                z_scores[f"z_score_{metrica}"] = round(float(z), 2)
+                if abs(z) > UMBRAL_Z:
+                    anomalias += 1
+                    print(f"   [!] ANOMALÍA en [{metrica}] -> Paciente: {val:.1f} | Media: {media:.1f} | Z-Score: {z:.2f}")
+
+            print(f"   Referencia usada: {len(referencia)} sanos ({criterio}).")
+            resultado["z_scores"] = z_scores
+            resultado["anomalias_zscore_detectadas"] = anomalias
+            resultado["referencia_zscore"] = {"n_sanos": int(len(referencia)), "criterio": criterio}
+
         return lista_resultados_fsl
-
-if __name__ == "__main__":
-    CSV_SANOS = "data/cohorte_sanos_referencia.csv"
-    CSV_FREESURFER = "data/UCSFFSX7_06Oct2026.csv" 
-    
-    motor = StatsEngine(CSV_SANOS, CSV_FREESURFER)
-    motor.preparar_motor()
-    
-    # SIMULACIÓN HEADLESS: Cogemos por ejemplo los primeros 3 cerebros de la propia tabla
-    # (puedes pasarle cualquier otro DataFrame con la misma estructura de columnas de pacientes a evaluar)
-    df_prueba_pacientes = pd.read_csv(CSV_FREESURFER, low_memory=False).head(3)
-    
-    motor.evaluar_cerebros(df_prueba_pacientes)

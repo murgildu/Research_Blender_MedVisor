@@ -2,6 +2,7 @@ import os
 import json
 import shutil
 import glob
+import re
 
 def a_wsl(ruta_win: str) -> str:
     """Convierte una ruta de Windows (D:\\...) a su equivalente en WSL (/mnt/d/...)."""
@@ -64,9 +65,13 @@ def obtener_fecha_adquisicion(ruta_nifti: str, sesion: str) -> str:
     return f"Desconocida (Orden lógico: {sesion})"
 
 def parsear_bids(nombre_archivo: str) -> tuple:
-    """Extrae (sujeto, sesion) de un nombre de archivo con convención BIDS."""
+    """Extrae (sujeto, sesion). Entiende IDs de ADNI con guiones bajos (sub-011_S_0002)."""
     partes = nombre_archivo.split('_')
-    sujeto = next((p for p in partes if p.startswith('sub-')), 'sub-desconocido')
+    m = re.match(r'sub-(\d{3})_([A-Za-z])_(\d{4})', nombre_archivo)
+    if m:
+        sujeto = f"sub-{m.group(1)}{m.group(2)}{m.group(3)}"
+    else:
+        sujeto = next((p for p in partes if p.startswith('sub-')), 'sub-desconocido')
     sesion = next((p for p in partes if p.startswith('ses-')), 'ses-desconocida')
     return sujeto, sesion
 
