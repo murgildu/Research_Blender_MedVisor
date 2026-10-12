@@ -7,28 +7,6 @@ MedVision es un **orquestador de software médico** para el análisis de Resonan
 
 Ambos modos comparten el mismo pipeline de base (HD-BET + FSL), pero el Headless añade medidas estadísticas (volumen normalizado con SIENAX, atrofia longitudinal con SIENA) orientadas a la detección de anomalías.
 
-## Prerrequisitos del Sistema
-
-Este proyecto utiliza una arquitectura de procesamiento híbrida. Dado que Blender opera en Windows pero las herramientas neurocientíficas más robustas son nativas de entornos UNIX, MedVision actúa como puente entre ambos sistemas. Se necesita:
-
-1. **HD-BET (Windows):** La IA encargada de la extracción craneal (skull-stripping).
-2. **WSL (Windows Subsystem for Linux):** El subsistema integrado de Windows. Actúa como puente para ejecutar comandos nativos de Linux de forma transparente, tanto desde Blender como desde el script Headless.
-3. **FSL (Linux / WSL):** El motor estadístico utilizado para segmentar los tejidos (`FAST`) y calcular volúmenes normalizados (`SIENAX`) o atrofia longitudinal (`SIENA`). Instálalo con el instalador oficial:
-3. **FSL (Linux / WSL):** El motor estadístico utilizado para segmentar los tejidos (`FAST`) y calcular volúmenes normalizados (`SIENAX`) o atrofia longitudinal (`SIENA`). Instálalo con el instalador oficial:
-
-   ```bash
-   wget https://fsl.fmrib.ox.ac.uk/fsldownloads/fslinstaller.py
-   python3 fslinstaller.py
-
-MedVision es un **orquestador de software médico** para el análisis de Resonancias Magnéticas (MRI) que coordina varias herramientas neurocientíficas especializadas (HD-BET, dcm2niix, FSL FAST, SIENAX, SIENA) bajo una interfaz única. Tiene dos modos de uso:
-
-- **Modo Headed** (add-on de Blender): aísla el cerebro con IA, clasifica sus tejidos y genera un entorno interactivo — una malla 3D sincronizada con visores ortogonales 2D — para inspeccionar un caso concreto.
-- **Modo Headless** (línea de comandos, `main.py`): procesa resonancias sin abrir Blender, pensado para análisis en lote y generación automática de informes (JSON acumulativo + HTML autocontenido). Añade volumen normalizado con SIENAX y atrofia longitudinal con SIENA.
-
-Incluye además un **convertidor masivo DICOM → NIfTI** (`convertidor_masivo.py`) pensado para la estructura de carpetas que descarga ADNI.
-
-> **Aviso:** MedVision es una herramienta de investigación y de demostración técnica. No está validada ni certificada para uso clínico y sus resultados no deben usarse para tomar decisiones médicas. Consulta la sección [Estado de validación](#estado-de-validación) para saber exactamente qué se ha comprobado y qué no.
-
 ---
 
 ## Índice
@@ -59,6 +37,16 @@ Este proyecto usa una arquitectura híbrida: Blender y los scripts corren en Win
    ```
    Comprueba que `$FSLDIR/bin` quede en el `PATH` de tu distro WSL. Si algún comando de FSL no se encuentra desde Windows, revisa `~/.bashrc` / `~/.profile`.
 4. **dcm2niix (Windows):** solo si vas a usar el convertidor (ver más abajo).
+
+MedVision es un **orquestador de software médico** para el análisis de Resonancias Magnéticas (MRI) que coordina varias herramientas neurocientíficas especializadas (HD-BET, dcm2niix, FSL FAST, SIENAX, SIENA) bajo una interfaz única. Tiene dos modos de uso:
+
+- **Modo Headed** (add-on de Blender): aísla el cerebro con IA, clasifica sus tejidos y genera un entorno interactivo — una malla 3D sincronizada con visores ortogonales 2D — para inspeccionar un caso concreto.
+- **Modo Headless** (línea de comandos, `main.py`): procesa resonancias sin abrir Blender, pensado para análisis en lote y generación automática de informes (JSON acumulativo + HTML autocontenido). Añade volumen normalizado con SIENAX y atrofia longitudinal con SIENA.
+
+Incluye además un **convertidor masivo DICOM → NIfTI** (`convertidor_masivo.py`) pensado para la estructura de carpetas que descarga ADNI.
+
+> **Aviso:** MedVision es una herramienta de investigación y de demostración técnica. No está validada ni certificada para uso clínico y sus resultados no deben usarse para tomar decisiones médicas. Consulta la sección [Estado de validación](#estado-de-validación) para saber exactamente qué se ha comprobado y qué no.
+
 
 ### Dependencias de Python
 
