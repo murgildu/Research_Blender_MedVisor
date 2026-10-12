@@ -38,11 +38,6 @@ Este proyecto usa una arquitectura híbrida: Blender y los scripts corren en Win
    Comprueba que `$FSLDIR/bin` quede en el `PATH` de tu distro WSL. Si algún comando de FSL no se encuentra desde Windows, revisa `~/.bashrc` / `~/.profile`.
 4. **dcm2niix (Windows):** solo si vas a usar el convertidor (ver más abajo).
 
-MedVision es un **orquestador de software médico** para el análisis de Resonancias Magnéticas (MRI) que coordina varias herramientas neurocientíficas especializadas (HD-BET, dcm2niix, FSL FAST, SIENAX, SIENA) bajo una interfaz única. Tiene dos modos de uso:
-
-- **Modo Headed** (add-on de Blender): aísla el cerebro con IA, clasifica sus tejidos y genera un entorno interactivo — una malla 3D sincronizada con visores ortogonales 2D — para inspeccionar un caso concreto.
-- **Modo Headless** (línea de comandos, `main.py`): procesa resonancias sin abrir Blender, pensado para análisis en lote y generación automática de informes (JSON acumulativo + HTML autocontenido). Añade volumen normalizado con SIENAX y atrofia longitudinal con SIENA.
-
 Incluye además un **convertidor masivo DICOM → NIfTI** (`convertidor_masivo.py`) pensado para la estructura de carpetas que descarga ADNI.
 
 > **Aviso:** MedVision es una herramienta de investigación y de demostración técnica. No está validada ni certificada para uso clínico y sus resultados no deben usarse para tomar decisiones médicas. Consulta la sección [Estado de validación](#estado-de-validación) para saber exactamente qué se ha comprobado y qué no.
