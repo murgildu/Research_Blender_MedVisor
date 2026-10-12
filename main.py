@@ -12,6 +12,7 @@ def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Pipeline Headless MedVision")
     parser.add_argument("-o", "--output", required=True, help="Carpeta de salida")
     parser.add_argument("-c", "--config", required=True, help="Archivo config.ini")
+    
 
     subparsers = parser.add_subparsers(dest="modo", required=True)
 
@@ -30,6 +31,9 @@ def construir_parser() -> argparse.ArgumentParser:
                                  help="Resonancia de la sesión más Antigua")
     p_longitudinal.add_argument("--r", dest="seguimiento", required=True,
                                  help="Resonancia de la sesión más Reciente")
+
+    p_longitudinal.add_argument('--siena_opts', type=str, default="", 
+                                 help="Opciones extra para ajustar el BET de SIENA")
 
     return parser
 

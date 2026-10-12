@@ -12,14 +12,30 @@ def a_wsl(ruta_win: str) -> str:
     return ruta
 
 def buscar_imagenes_fsl(directorio: str) -> dict:
-    """Busca las imágenes (png/gif) que SIENA/SIENAX dejan en su carpeta de salida."""
+    """Busca las imágenes (png/gif) que SIENA/SIENAX dejan en su salida, ignorando archivos ocultos."""
     imagenes = {}
     if not os.path.isdir(directorio):
         return imagenes
     for archivo in sorted(os.listdir(directorio)):
-        if archivo.lower().endswith(('.png', '.gif')):
+        # Evitamos los .ramp.gif que empiezan por punto
+        if archivo.lower().endswith(('.png', '.gif')) and not archivo.startswith('.'):
             imagenes[archivo] = os.path.join(directorio, archivo)
     return imagenes
+
+def parsear_bids(nombre_archivo: str) -> tuple:
+    """Extrae (sujeto, sesion) tolerando guiones bajos en el ID del sujeto (típico de ADNI)."""
+    import re
+    # Busca todo lo que haya entre 'sub-' y '_ses-'
+    sujeto_match = re.search(r'sub-(.+?)_ses-', nombre_archivo)
+    if not sujeto_match:
+        sujeto_match = re.search(r'sub-([a-zA-Z0-9_]+)', nombre_archivo)
+         
+    sesion_match = re.search(r'ses-([a-zA-Z0-9]+)', nombre_archivo)
+    
+    sujeto = f"sub-{sujeto_match.group(1)}" if sujeto_match else 'sub-desconocido'
+    sesion = f"ses-{sesion_match.group(1)}" if sesion_match else 'ses-desconocida'
+    
+    return sujeto, sesion
 
 def es_secuencia_t1(ruta_nifti: str) -> bool:
     """Lee el .json asociado (si existe) para asegurar que la secuencia es T1."""
@@ -62,13 +78,6 @@ def obtener_fecha_adquisicion(ruta_nifti: str, sesion: str) -> str:
             pass
 
     return f"Desconocida (Orden lógico: {sesion})"
-
-def parsear_bids(nombre_archivo: str) -> tuple:
-    """Extrae (sujeto, sesion) de un nombre de archivo con convención BIDS."""
-    partes = nombre_archivo.split('_')
-    sujeto = next((p for p in partes if p.startswith('sub-')), 'sub-desconocido')
-    sesion = next((p for p in partes if p.startswith('ses-')), 'ses-desconocida')
-    return sujeto, sesion
 
 def limpiar_archivos_temporales(directorio_salida, nombre_archivo_base):
     """

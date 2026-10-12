@@ -82,8 +82,6 @@ def generar_html(resultados, ruta_informe_html):
             .qa-image-full {{ max-width: 100%; border-radius: 4px; border: 1px solid #ccc; margin-top: 10px; }}
             .credits-section {{ margin-top: 40px; padding-top: 20px; border-top: 2px solid #ecf0f1; font-size: 12px; color: #7f8c8d; line-height: 1.6; }}
             .credits-section h3 {{ color: #34495e; font-size: 14px; margin-bottom: 10px; }}
-            .references {{ padding-left: 15px; margin-bottom: 15px; }}
-            .references li {{ margin-bottom: 6px; }}
         </style>
     </head>
     <body>
@@ -93,103 +91,103 @@ def generar_html(resultados, ruta_informe_html):
 
     for res in resultados:
         paciente = res.get("paciente", "Desconocido")
-        sesion = res.get("sesion", "Desconocida")
         tipo = res.get("tipo", "transversal")
-        archivo_orig = res.get("archivo_original", "N/A")
-        v_abs = res.get("volumenes_absolutos_mm3", {})
-        v_norm = res.get("volumenes_sienax_normalizados", {})
         imgs = res.get("imagenes_fsl", {})
 
-        html_content += f"""
-            <div class="header-info">
-                <div>
-                    <p>Paciente: <span>{paciente}</span></p>
-                    <p>Sesión: <span>{sesion}</span></p>
+        if tipo == "transversal":
+            sesion = res.get("sesion", "Desconocida")
+            archivo_orig = res.get("archivo_original", "N/A")
+            v_abs = res.get("volumenes_absolutos_mm3", {})
+            v_norm = res.get("volumenes_sienax_normalizados", {})
+
+            html_content += f"""
+                <div class="header-info">
+                    <div><p>Paciente: <span>{paciente}</span></p><p>Sesión: <span>{sesion}</span></p></div>
+                    <div><p>Modalidad: <span>{tipo.capitalize()}</span></p><p>Archivo: <span>{archivo_orig}</span></p></div>
+                    <div><p>Fecha Reporte: <span>{datetime.now().strftime('%Y-%m-%d %H:%M')}</span></p></div>
                 </div>
-                <div>
-                    <p>Modalidad: <span>{tipo.capitalize()}</span></p>
-                    <p>Archivo: <span>{archivo_orig}</span></p>
-                </div>
-                <div>
-                    <p>Fecha Reporte: <span>{datetime.now().strftime('%Y-%m-%d %H:%M')}</span></p>
-                </div>
-            </div>
-            <h2>Cuantificación Tisular</h2>
+                <h2>Cuantificación Tisular</h2>
+                <table>
+                    <tr><th>Tejido Anatómico</th><th>Volumen Absoluto (HD-BET+FAST)</th><th>Volumen Normalizado (SIENAX)</th></tr>
+                    <tr><td>Materia Gris (GM)</td><td>{v_abs.get("materia_gris", "N/A")}</td><td>{v_norm.get("materia_gris_normalizada", "N/A") if v_norm else "N/A"}</td></tr>
+                    <tr><td>Materia Blanca (WM)</td><td>{v_abs.get("materia_blanca", "N/A")}</td><td>{v_norm.get("materia_blanca_normalizada", "N/A") if v_norm else "N/A"}</td></tr>
+                    <tr><td>Líquido Cefalorraquídeo (CSF)</td><td>{v_abs.get("liquido_cefalorraquideo", "N/A")}</td><td>N/A</td></tr>
+                    <tr style="font-weight: bold; background-color: #e8f4f8;"><td>Cerebro Total (GM+WM)</td><td>{v_abs.get("cerebro_total", "N/A")}</td><td>{v_norm.get("volumen_cerebral_total_normalizado", "N/A") if v_norm else "N/A"}</td></tr>
+                </table>
+            """
+            if v_norm:
+                html_content += f"<p style='font-size: 12px; color: #7f8c8d;'>* Normalizado usando VSCALING: {v_norm.get('v_scale', 'N/A')}</p>"
+
+            html_content += "<div class='qa-section'><h2>Control de Calidad (QA) FSL</h2>"
+            descripciones_qa = {
+                "I_bet.png": ("Extracción Craneal (FSL BET interno de SIENAX)", "Muestra el parénquima cerebral aislado por el algoritmo interno de SIENAX.", "qa-image"),
+                "I2std.png": ("Registro al Espacio Estándar (FLIRT MNI152)", "Verifica la alineación afín del cerebro contra el atlas anatómico estándar MNI152.", "qa-image"),
+                "I_masks.png": ("Máscara de Cobertura (Field of View)", "Garantiza que ninguna parte del encéfalo ha quedado fuera del campo de visión (FOV).", "qa-image"),
+                "I_render.png": ("Segmentación Final de Tejidos (FAST)", "Renderizado multicorte que visualiza la clasificación probabilística final.", "qa-image-full")
+            }
+
+            for img_name, info in descripciones_qa.items():
+                if img_name in imgs:
+                    titulo, descripcion, img_class = info
+                    img_data = _imagen_a_base64(imgs[img_name])
+                    style_body = ' style="flex-direction: column; align-items: flex-start;"' if img_class == "qa-image-full" else ''
+                    html_content += f"<div class='qa-card'><h3 class='qa-header'>{titulo}</h3><div class='qa-body'{style_body}><p class='qa-description'>{descripcion}</p><img class='{img_class}' src='{img_data}' alt='{titulo}'></div></div>"
+            html_content += "</div>"
+
+        elif tipo == "longitudinal":
+            html_content += f"""
+            <h2>Atrofia Longitudinal</h2>
             <table>
-                <tr>
-                    <th>Tejido Anatómico</th>
-                    <th>Volumen Absoluto (mm³)</th>
-                    <th>Volumen Normalizado (mm³) *</th>
-                </tr>
-                <tr>
-                    <td>Materia Gris (GM)</td>
-                    <td>{v_abs.get("materia_gris", "N/A")}</td>
-                    <td>{v_norm.get("materia_gris_normalizada", "N/A") if v_norm else "N/A"}</td>
-                </tr>
-                <tr>
-                    <td>Materia Blanca (WM)</td>
-                    <td>{v_abs.get("materia_blanca", "N/A")}</td>
-                    <td>{v_norm.get("materia_blanca_normalizada", "N/A") if v_norm else "N/A"}</td>
-                </tr>
-                <tr>
-                    <td>Líquido Cefalorraquídeo (CSF)</td>
-                    <td>{v_abs.get("liquido_cefalorraquideo", "N/A")}</td>
-                    <td>N/A</td>
-                </tr>
+                <tr><th>Métrica</th><th>Valor</th></tr>
                 <tr style="font-weight: bold; background-color: #e8f4f8;">
-                    <td>Volumen Cerebral Total (TBV)</td>
-                    <td>{v_abs.get("volumen_intracraneal_total", "N/A")}</td>
-                    <td>{v_norm.get("volumen_cerebral_total_normalizado", "N/A") if v_norm else "N/A"}</td>
+                    <td>PBVC (Cambio Porcentual de Volumen Cerebral)</td>
+                    <td>{res.get("metricas", {}).get("pbvc_porcentaje", "N/A")} %</td>
+                </tr>
+                <tr>
+                    <td>PBVC Mitades (Extremos)</td>
+                    <td>{res.get("metricas", {}).get("pbvc_extremos", "N/A")}</td>
+                </tr>
+                <tr>
+                    <td>Opciones SIENA aplicadas</td>
+                    <td><code>{res.get("siena_opts", "Por defecto")}</code></td>
                 </tr>
             </table>
-        """
-        
-        if v_norm:
-            v_scale = v_norm.get("v_scale", "N/A")
-            html_content += f"""
-            <p style="font-size: 12px; color: #7f8c8d; margin-top: -20px; margin-bottom: 30px;">
-                * La normalización se estima multiplicando el volumen absoluto por el Factor de Escala de SIENAX (v_scale: {v_scale}).
-            </p>
-            """
+    """
+            
+            descripciones_qa_siena = {
+                "A_and_B": ("Alineación Basal vs Seguimiento", "Superposición de los dos escáneres tras el registro al espacio intermedio. Vital para comprobar que ambas fechas cuadran anatómicamente.", "qa-image-full"),
+                "render": ("Renderizado del Desplazamiento", "Muestra los contornos cerebrales donde se ha detectado expansión (rojo-amarillo) o disminución/atrofia (azul) entre ambas sesiones.", "qa-image-full"),
+                "valid_mask": ("Máscara de Segmentación (Cerebro)", "Verificación de la separación de tejidos y extracción del cráneo en la imagen coregistrada.", "qa-image-full"),
+                "A_bet": ("Extracción Cerebral (Basal)", "Resultado de aplicar el algoritmo BET a la sesión basal. Comprobar que no hay tejido no cerebral (órbitas, músculo).", "qa-image"),
+                "B_bet": ("Extracción Cerebral (Seguimiento)", "Resultado de aplicar el algoritmo BET a la sesión de seguimiento.", "qa-image"),
+                "brain_seg": ("Segmentación de Tejidos", "Clasificación de materia gris, materia blanca y líquido cefalorraquídeo generada por FAST.", "qa-image")
+            }
 
-        html_content += """
-            <div class="qa-section">
-                <h2>Control de Calidad (QA) FSL</h2>
-        """
-        
-        descripciones_qa = {
-            "I_bet.png": ("Extracción Craneal (HD-BET / Skull-Stripping)", "Muestra el parénquima cerebral aislado superpuesto sobre la resonancia magnética original. Permite al especialista verificar visualmente que el algoritmo no ha recortado tejido cortical válido ni ha incluido duramadre, cráneo o globos oculares.", "qa-image"),
-            "I2std.png": ("Registro al Espacio Estándar (FLIRT MNI152)", "Verifica la alineación afín del cerebro del paciente (imagen de fondo) contra el atlas anatómico estándar MNI152 (bordes rojos). Este registro geométrico es el paso crítico que permite a SIENAX calcular el 'v_scale' (factor de normalización) para corregir el tamaño de la cabeza del paciente.", "qa-image"),
-            "I_masks.png": ("Máscara de Cobertura (Field of View)", "Asegura que el cerebro extraído (azul) y la máscara del espacio estándar (líneas rojas) intersecan correctamente (zona verde). Garantiza que ninguna parte del encéfalo ha quedado fuera del campo de visión (FOV) del escáner durante el procesamiento.", "qa-image"),
-            "I_render.png": ("Segmentación Final de Tejidos (FAST)", "Renderizado multicorte que visualiza la clasificación probabilística final de los vóxeles. Permite auditar la separación de los tejidos: Materia Gris, Materia Blanca y Líquido Cefalorraquídeo en los planos axiales, sagitales y coronales.", "qa-image-full")
-        }
+            for img_name, img_path in imgs.items():
+                titulo = img_name
+                descripcion = "Renderizado automático de SIENA."
+                img_class = "qa-image-full"
+                
+                for key, info in descripciones_qa_siena.items():
+                    if key in img_name:
+                        titulo, descripcion, img_class = info
+                        break
+                        
+                img_data = _imagen_a_base64(img_path)
+                html_content += f"<div class='qa-card'><h3 class='qa-header'>{titulo}</h3><div class='qa-body' style='flex-direction: column; align-items: flex-start;'><p class='qa-description'>{descripcion}</p><img class='{img_class}' src='{img_data}'></div></div>"
+            html_content += "</div>"
 
-        for img_name, info in descripciones_qa.items():
-            if img_name in imgs:
-                titulo, descripcion, img_class = info
-                img_data = imgs[img_name]
-                style_body = ' style="flex-direction: column; align-items: flex-start;"' if img_class == "qa-image-full" else ''
-                html_content += f"""
-                <div class="qa-card">
-                    <h3 class="qa-header">{titulo}</h3>
-                    <div class="qa-body"{style_body}>
-                        <p class="qa-description">{descripcion}</p>
-                        <img class="{img_class}" src="{img_data}" alt="{titulo}">
-                    </div>
-                </div>
-                """
         html_content += "<hr style='border:1px solid #ecf0f1; margin: 40px 0;'>"
 
     html_content += """
-            </div>
             <div class="credits-section">
                 <h3>Metodología Científica</h3>
-                <p>El volumen del tejido cerebral, normalizado por el tamaño de la cabeza del sujeto, se estimó con la herramienta SIENAX, parte de la librería FSL. La extracción primaria del cerebro se delegó a la red neuronal artificial HD-BET para una mayor precisión. Posteriormente, la imagen se registró de forma afín al espacio estándar MNI152 para obtener el factor de escala volumétrico (V-scale), utilizado como normalización del tamaño craneal. Finalmente, la segmentación de tipos de tejido con estimación de volumen parcial se llevó a cabo mediante el algoritmo FAST.</p>
-                <h3>Referencias</h3>
+                <p><strong>Aviso Técnico:</strong> Los volúmenes absolutos se extraen aislando el cráneo con la IA HD-BET y segmentando con FAST. Los volúmenes normalizados provienen exclusivamente del pipeline integrado de SIENAX (usando su propio módulo BET y FAST interno), multiplicados por su factor de escala para corregir el tamaño de la cabeza. La atrofia longitudinal (PBVC) se calcula mediante el registro de contornos de SIENA.</p>
+                <h3>Referencias Bibliográficas</h3>
                 <ul class="references">
-                    <li><em>Smith, S.M., et al. (2002). Accurate, robust and automated longitudinal and cross-sectional brain change analysis. NeuroImage, 17(1):479-489.</em></li>
+                    <li><em>Smith, S.M., et al. (2002). Accurate, robust and automated longitudinal and cross-sectional brain change analysis. NeuroImage, 17(1):479-489. (SIENA/SIENAX)</em></li>
                     <li><em>Isensee, F., et al. (2019). Automated brain extraction of multisequence MRI using artificial neural networks. Human Brain Mapping, 40(17):4952-4964. (HD-BET)</em></li>
-                    <li><em>Zhang, Y., et al. (2001). Segmentation of brain MR images through a hidden Markov random field model and the expectation maximization algorithm. IEEE Trans. on Medical Imaging, 20(1):45-57.</em></li>
+                    <li><em>Zhang, Y., et al. (2001). Segmentation of brain MR images through a hidden Markov random field model and the expectation maximization algorithm. IEEE Trans. on Medical Imaging, 20(1):45-57. (FAST)</em></li>
                 </ul>
                 <h3>Desarrollo</h3>
                 <p>Pipeline <strong>MedVision</strong> y generador de reportes HTML desarrollados por <strong>Miriam Rodríguez García</strong>.</p>
