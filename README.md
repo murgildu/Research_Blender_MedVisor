@@ -14,7 +14,11 @@ Este proyecto utiliza una arquitectura de procesamiento híbrida. Dado que Blend
 1. **HD-BET (Windows):** La IA encargada de la extracción craneal (skull-stripping).
 2. **WSL (Windows Subsystem for Linux):** El subsistema integrado de Windows. Actúa como puente para ejecutar comandos nativos de Linux de forma transparente, tanto desde Blender como desde el script Headless.
 3. **FSL (Linux / WSL):** El motor estadístico utilizado para segmentar los tejidos (`FAST`) y calcular volúmenes normalizados (`SIENAX`) o atrofia longitudinal (`SIENA`). Instálalo con el instalador oficial:
-   ```bash# Research_Blender_MedVisor
+3. **FSL (Linux / WSL):** El motor estadístico utilizado para segmentar los tejidos (`FAST`) y calcular volúmenes normalizados (`SIENAX`) o atrofia longitudinal (`SIENA`). Instálalo con el instalador oficial:
+
+   ```bash
+   wget https://fsl.fmrib.ox.ac.uk/fsldownloads/fslinstaller.py
+   python3 fslinstaller.py
 
 MedVision es un **orquestador de software médico** para el análisis de Resonancias Magnéticas (MRI) que coordina varias herramientas neurocientíficas especializadas (HD-BET, dcm2niix, FSL FAST, SIENAX, SIENA) bajo una interfaz única. Tiene dos modos de uso:
 
@@ -112,7 +116,6 @@ Si Windows no encuentra el ejecutable (frecuente tras `pip install --user`, que 
 ### Uso
 
 ```bash
-python convertidor_masivo.py --dry-run                      # lista qué se convertiría, sin escribir nada
 python convertidor_masivo.py -i C:\datos\ADNI -o C:\datos\salida
 python convertidor_masivo.py --dcm2niix "C:\ruta\dcm2niix.exe"
 ```
@@ -125,8 +128,7 @@ python convertidor_masivo.py --dcm2niix "C:\ruta\dcm2niix.exe"
 | `--dcm2niix` | Ruta al ejecutable si no está en el PATH |
 | `--patron` | Expresión regular para reconocer series T1 en la ruta (por defecto `mp.?rage\|spgr\|t1`) |
 | `--min-archivos` | Mínimo de DICOM para considerar que una carpeta es un volumen (por defecto 20) |
-| `--forzar` | Reconvierte aunque el `.nii.gz` ya exista |
-| `--dry-run` | Solo lista lo que haría |
+| `--forzar` | Reconvierte aunque el `.nii.gz` ya exista
 
 ### Qué produce
 
